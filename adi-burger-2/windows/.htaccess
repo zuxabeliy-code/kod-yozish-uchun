@@ -1,0 +1,5 @@
+# Faqat o'rnatish fayllari ochiq, printer xizmati manba kodi yopiq
+Options -Indexes
+<FilesMatch "\.(go|mod|sum|json|log)$">
+  Require all denied
+</FilesMatch>

@@ -1,0 +1,28 @@
+# ADI BURGER 2.0
+Options -Indexes
+DirectoryIndex index.php index.html
+
+# Authorization sarlavhasi PHP ga yetib borsin (kassa API tokeni)
+CGIPassAuth On
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTP:Authorization} .
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+  # Yashirin fayllar (.env, .git) ochilmasin
+  RewriteRule (^|/)\.(?!well-known) - [F]
+</IfModule>
+
+<FilesMatch "\.(sql|md|log|bak|ini|lock|sh|env|go|mod|sum)$">
+  Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+</IfModule>
+
+# Kassa fayllari keshlanmasin (Service Worker o'zi boshqaradi)
+<IfModule mod_headers.c>
+  <FilesMatch "^(sw\.js|manifest\.json)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>

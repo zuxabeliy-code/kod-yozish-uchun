@@ -1,0 +1,7 @@
+<FilesMatch "\.(php|phtml|php\d|phar|pl|py|cgi|sh)$">
+Require all denied
+</FilesMatch>
+Options -Indexes -ExecCGI
+<IfModule mod_php.c>
+php_flag engine off
+</IfModule>

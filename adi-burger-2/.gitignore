@@ -1,0 +1,8 @@
+config/config.php
+storage/install.lock
+storage/logs/*
+storage/backups/*
+storage/cache/*
+uploads/receipts/*
+!**/.htaccess
+!**/.gitkeep
