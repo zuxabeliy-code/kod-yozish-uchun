@@ -4,6 +4,8 @@ package main
 // bitta ishchi ketma-ket chop etadi — ikki chek hech qachon aralashmaydi.
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -21,14 +23,12 @@ const (
 	StUnknown   = "unknown"   // Natija noma'lum (yarim yuborilgan bo'lishi mumkin)
 	StReprinted = "reprinted" // Qayta chiqarildi (o'rniga yangi chek yaratilgan)
 
-
-	keepJobs        = 400
+	keepJobs = 400
 )
 
 // autoRetryWindow: printer javob bermasa shu vaqt davomida o'zi qayta urinadi
 // (printerga hech narsa ketmagan bo'lsa — ikki marta chiqish xavfi yo'q).
 var autoRetryWindow = 2 * time.Minute
-
 
 type Job struct {
 	ID        string    `json:"id"`
@@ -54,10 +54,17 @@ type Queue struct {
 	wake  chan struct{}
 	cfg   func() Config
 	state PrinterState
+	// Logo rasmlari bir marta saqlanadi (har bir chekda takrorlanmaydi)
+	imgs    map[string]string
+	imgFile string
 }
 
 func NewQueue(dir string, cfg func() Config) *Queue {
-	q := &Queue{jobs: map[string]*Job{}, file: filepath.Join(dir, "jobs.json"), wake: make(chan struct{}, 1), cfg: cfg}
+	q := &Queue{jobs: map[string]*Job{}, file: filepath.Join(dir, "jobs.json"), wake: make(chan struct{}, 1), cfg: cfg,
+		imgs: map[string]string{}, imgFile: filepath.Join(dir, "images.json")}
+	if b, err := os.ReadFile(q.imgFile); err == nil {
+		_ = json.Unmarshal(b, &q.imgs)
+	}
 	if b, err := os.ReadFile(q.file); err == nil {
 		var list []*Job
 		if json.Unmarshal(b, &list) == nil {
@@ -123,6 +130,7 @@ func (q *Queue) Add(j *Job) (*Job, bool) {
 		c := *ex
 		return &c, false
 	}
+	q.externalizeLocked(j)
 	now := time.Now()
 	j.Status = StPending
 	j.CreatedAt, j.UpdatedAt = now, now
@@ -134,6 +142,60 @@ func (q *Queue) Add(j *Job) (*Job, bool) {
 	q.kick()
 	c := *j
 	return &c, true
+}
+
+// externalizeLocked: rasm baytlarini chekdan ajratib, alohida faylga yozadi (kalit bo'yicha).
+func (q *Queue) externalizeLocked(j *Job) {
+	changed := false
+	for i := range j.Doc.Lines {
+		ln := &j.Doc.Lines[i]
+		if ln.Type != "img" || ln.B64 == "" {
+			continue
+		}
+		sum := sha1.Sum([]byte(ln.B64))
+		key := hex.EncodeToString(sum[:8])
+		if _, ok := q.imgs[key]; !ok {
+			q.imgs[key] = ln.B64
+			changed = true
+		}
+		ln.Ref, ln.B64 = key, ""
+	}
+	if !changed {
+		return
+	}
+	if len(q.imgs) > 12 { // eski logolarni tozalash: faqat navbatdagi cheklar ishlatayotganlari qoladi
+		used := map[string]bool{}
+		for _, jb := range q.jobs {
+			for _, ln := range jb.Doc.Lines {
+				used[ln.Ref] = true
+			}
+		}
+		for k := range q.imgs {
+			if !used[k] && k != "" {
+				delete(q.imgs, k)
+			}
+		}
+	}
+	b, _ := json.Marshal(q.imgs)
+	tmp := q.imgFile + ".tmp"
+	if os.WriteFile(tmp, b, 0o600) == nil {
+		_ = os.Rename(tmp, q.imgFile)
+	}
+}
+
+// resolveDoc: chop etishdan oldin rasm baytlarini joyiga qaytaradi.
+func (q *Queue) resolveDoc(d Doc) Doc {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	lines := make([]Line, len(d.Lines))
+	copy(lines, d.Lines)
+	for i := range lines {
+		if lines[i].Type == "img" && lines[i].B64 == "" {
+			lines[i].B64 = q.imgs[lines[i].Ref]
+		}
+	}
+	d.Lines = lines
+	return d
 }
 
 func (q *Queue) Get(id string) *Job {
@@ -284,7 +346,7 @@ func (q *Queue) Run() {
 				break
 			}
 			c := q.cfg().Printer
-			data := Render(j.Doc, c.Width, c.Cut)
+			data := Render(q.resolveDoc(j.Doc), c.Width, c.Cut)
 			t := time.Now()
 			var err error
 			for i := 0; i < j.Copies && err == nil; i++ {

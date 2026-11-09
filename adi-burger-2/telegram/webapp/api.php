@@ -54,13 +54,19 @@ try {
 
         case 'order.cancel':
             $o = webapp_find($cust, (string)($in['uuid'] ?? ''));
-            if ($o['status'] !== 'pending_pay') {
-                throw new UserError("Buyurtma kassaga yuborilgan. Bekor qilish uchun qo'ng'iroq qiling.");
+            // To'lov kutilayotgan buyurtma doim bekor qilinadi; kassaga tushgan, lekin hali qabul qilinmagan va to'lanmagan buyurtma — qisqa vaqt ichida
+            $mins = max(0, setting_int('cancel_minutes'));
+            $fresh = $o['status'] === 'new' && $o['pay_status'] === 'unpaid' && time() - strtotime($o['created_at']) <= $mins * 60;
+            if ($o['status'] !== 'pending_pay' && !$fresh) {
+                throw new UserError("Buyurtma kassaga yuborilgan" . ($mins ? " ($mins daqiqadan oshdi yoki qabul qilindi)" : '') . ". Bekor qilish uchun qo'ng'iroq qiling.");
             }
             foreach (rows("SELECT * FROM hamyon_payments WHERE order_id = ? AND status = 'pending'", [$o['id']]) as $hp) {
                 hamyon_request('POST', '/payment/cancel', hamyon_creds() + ['payment_id' => $hp['payment_id']]);
             }
             tg_order_set_status((int)$o['id'], 'cancelled', 'Mijoz bekor qildi');
+            if ($fresh) {
+                tg_send_admins("❌ Mijoz {$o['number']} buyurtmani bekor qildi (qabul qilinmasdan oldin).");
+            }
             json_out(['ok' => true]);
 
         case 'receipt.upload':
@@ -118,6 +124,7 @@ function webapp_init(array $cust): array
             'price' => (int)$p['price'], 'img' => product_thumb($p['image']), 'ok' => (int)$p['is_available'] === 1], $products),
         'types' => array_values(array_filter([setting_on('bot_pickup') ? 'takeaway' : null, setting_on('bot_delivery') ? 'delivery' : null])),
         'delivery_fee' => setting_int('delivery_fee'),
+        'notes' => ['delivery' => setting('bot_note_delivery'), 'pickup' => setting('bot_note_pickup'), 'pay' => setting('bot_note_pay')],
         'min_order' => setting_int('min_order'),
         'pays' => $pays,
         'customer' => ['name' => $cust['name'], 'phone' => $cust['phone'], 'address' => $cust['last_address']],
@@ -141,6 +148,7 @@ function webapp_order(array $o, bool $detail = false): array
     $out['address'] = $o['address'];
     $out['reject_reason'] = $o['reject_reason'];
     if ($detail) {
+        $out['can_cancel'] = $o['status'] === 'pending_pay' || ($o['status'] === 'new' && $o['pay_status'] === 'unpaid' && time() - strtotime($o['created_at']) <= max(0, setting_int('cancel_minutes')) * 60);
         if ($o['pay_method'] === 'card' && $o['pay_status'] !== 'paid') {
             $out['cards'] = cards_list();
             $r = row('SELECT status, note FROM card_receipts WHERE order_id = ? ORDER BY id DESC LIMIT 1', [$o['id']]);

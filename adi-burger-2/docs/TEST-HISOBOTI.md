@@ -1,6 +1,6 @@
 # ADI BURGER 2.0 — Test hisoboti
 
-Sana: 2026-11-09 · Versiya: 2.0.0
+Sana: 2026-11-09 · Versiya: 2.1.0
 
 **Sinov muhiti:**
 - Linux, PHP 8.3, MariaDB 10.11.
@@ -50,6 +50,31 @@ Belgilar: ✅ O'tdi · ❌ Xato · ⚪ Tekshirilmagan
 | 31 | Backup | Yaratiladi, yuklab olinadi, internetdan yopiq | .sql.gz yaratildi va o'qildi; Apache'da 403 | ✅ |
 | 32 | Xavfsizlik | Pastdagi ro'yxat | Hammasi o'tdi | ✅ |
 
+### 2.1.0 yangilanishi testlari
+
+Server integratsiya testlari — **73/73**, printer xizmati unit testlari — **7/7**, brauzer ssenariylari — **28/28** (yangi funksiyalar) va **14/14** (regressiya), admin panelning 14 sahifasi xatosiz ochiladi.
+
+| # | Test | Kutilgan natija | Haqiqiy natija | Holat |
+|---|------|-----------------|----------------|-------|
+| 33 | Bot ikki marta javob bermasligi | Bir xil xabar 3 marta kelsa ham 1 ta javob | 1 ta javob; update_id bazaga yozildi | ✅ |
+| 34 | «Buyurtma berish» tugmasi | Pastki menyuda web_app yo'q, bosilganda inline web_app tugmasi | Shunday | ✅ (haqiqiy Telegram'da tekshirilmagan) |
+| 35 | Kassir login/parol | Kassirga login va parol yoziladi, kassa offline tekshira oladi | PBKDF2 xesh mos; katalogda bor; kassada login bilan kirdi, noto'g'ri parol rad etildi | ✅ |
+| 36 | Login xavfsizligi | Band login, takroriy PIN, qisqa parol rad etiladi; kassir admin panelga kira olmaydi | Hammasi rad etildi | ✅ |
+| 37 | Stollarni o'chirish | Ishlatilmagan o'chadi, tarixda ishlatilgani yashiriladi | Shunday | ✅ |
+| 38 | Yetkazish narxi | Standart 0 (bepul); kassada qo'lda yoziladi, jami o'zgaradi | Shunday | ✅ |
+| 39 | Tasdiqlashda so'rovsizlik | Olib ketish, yetkazish va stolda hech qanday oyna chiqmaydi | Oyna chiqmadi | ✅ |
+| 40 | Oshxona cheki | Faqat taom va soni; buyurtma raqami, tur, telefon, narx yo'q | Shunday (soxta printerda tekshirildi) | ✅ |
+| 41 | Mijoz cheki | Mijoz telefoni, ismi, manzili va yetkazish narxi chiqadi | Shunday | ✅ |
+| 42 | Tepadagi rejimlar | Stolda / Olib ketish / Yetkazish tablari, faol buyurtmalar soni | Shunday | ✅ |
+| 43 | Chek dizayneri | Blokni yoqish, o'z matnini qo'shish, jonli ko'rinish, saqlash, kassada chop etish | Shunday; noma'lum blok turlari tozalandi | ✅ |
+| 44 | Logo | Yuklash, kattalik/qoralik, printer rasmi (GS v 0), chekda chop etilishi | Soxta printer rasmni qabul qildi | ✅ (haqiqiy Xprinter'da tekshirilmagan) |
+| 45 | Shrift B, chet, qator oralig'i | Printer buyruqlari va qator uzunligi mos | Unit test | ✅ |
+| 46 | Baza yangilanishi (v1 → v2) | Eski bazadagi ma'lumot saqlanadi, yangi ustun/jadval o'zi qo'shiladi | Admin/API birinchi so'rovida o'zi yangiladi | ✅ |
+| 47 | Mijoz bekor qilishi, tayyorlanish vaqti | 3 daqiqa ichida bekor qila oladi; qabul qilingach yo'q; qabulda "~25 daqiqa" yoziladi | Shunday | ✅ |
+| 48 | Buyurtmalarni qidirish | Raqam, telefon, ism, manzil bo'yicha va tur bo'yicha | Shunday | ✅ |
+| 49 | PHP 8.0 mosligi | 8.1 dan keyingi sintaksis yo'q | Manba kodi skanerlandi (`never` olib tashlandi). Haqiqiy PHP 8.0 da ishga tushirilmagan: sinov muhitida PHP 8.3 | ⚪ qisman |
+| 50 | kassa-ornatish.bat | Manzilni tozalash, saytni tekshirish, kassa-ochish.bat ni o'zi yaratish | Nishonlar va mantiq tekshirildi. Windows'da ishga tushirilmagan | ⚪ kassada tekshirish kerak |
+
 ### Xavfsizlik tekshiruvlari
 
 - Soxta yoki eskirgan Telegram initData rad etiladi (401). Webhook maxfiy tokensiz rad etiladi (403).
@@ -72,6 +97,13 @@ Belgilar: ✅ O'tdi · ❌ Xato · ⚪ Tekshirilmagan
 7. Telegram buyurtmasining oshxona cheki holati serverga yozilmasdi (ID formati) → tuzatildi.
 8. To'lanmagan karta buyurtmasini qabul qilish mumkin edi → hamma joyda bloklandi.
 9. O'rnatuvchi config faylga 0640 ruxsat qo'yardi, ba'zi hostinglarda bu saytni to'xtatardi → olib tashlandi.
+10. **Bot «Buyurtma berish» tugmasi mini ilovani ochmasdi** («Bu sahifa Telegram bot ichida ochiladi» xatosi): pastki klaviaturadagi web_app tugmasi ba'zi Telegram ilovalarida foydalanuvchi ma'lumotini bermaydi → oddiy tugma + inline web_app tugmasiga almashtirildi.
+11. **Bot /start ga ikki marta javob berardi**: Telegram sekin javobda xabarni qayta yuboradi → webhook darhol «ok» qaytaradi va har bir update_id faqat bir marta qayta ishlanadi.
+12. **kassa-ornatish.bat «kassa-ochish.bat yuklanmadi» xatosi**: o'rnatuvchi ikkinchi faylni noto'g'ri manzildan (`/Adi/pos/windows/…`) yuklashga urinardi → endi hamma narsani o'zi yaratadi, manzilni tozalaydi va saytni tekshiradi.
+13. Yetkazishda 10 000 so'm avtomatik qo'yilardi → standart 0, kassir qo'lda yozadi.
+14. Tasdiqlashda telefon/manzil so'ralardi → hech narsa so'ralmaydi.
+15. Logo yuklashda dizayner sahifasi qayta yuklanib, saqlanmagan o'zgarishlar yo'qolardi → logo yuklashda joriy dizayn ham saqlanadi.
+16. Admin: kassirga login/parol berib bo'lmasdi; stollarni o'chirib bo'lmasdi → qo'shildi.
 
 Tuzatishlardan keyin: server integratsiya testlari **43/43**, printer xizmati unit testlari **6/6**, brauzer ssenariylari — JS xatosiz.
 
@@ -86,7 +118,9 @@ Tuzatishlardan keyin: server integratsiya testlari **43/43**, printer xizmati un
 | USB rejim (Windows spooler) | Windows yo'q | Faqat USB printer bo'lsa |
 | Windows qayta yoqilishi | Windows yo'q | Kompyuterni qayta yoqing: kassa va printer xizmati o'zi ochilishi kerak |
 | Chrome "Local Network Access" ruxsati | Faqat HTTPS saytdan Chrome'ning yangi versiyalarida | O'rnatuvchi ruxsatni ro'yxatga yozadi. Chrome so'rasa — "Ruxsat berish" |
-| Haqiqiy Telegram bot va webhook | Tashqi tarmoq ishlatilmadi | Admin → Telegram → "Ulanishni tekshirish" |
+| Haqiqiy Telegram bot va webhook | Tashqi tarmoq ishlatilmadi | Admin → Telegram → "Ulanishni tekshirish". Botga /start yozing: bitta javob kelishi kerak. «Buyurtma berish» → «Menyuni ochish» → menyu ochilishi kerak |
+| Xprinter'da logo, shrift B, chet | Haqiqiy printer yo'q | Chek dizayni → «Namuna chek chiqarish» va «O'lchov cheki» |
+| Yangi kassa-ornatish.bat | Windows yo'q | Monoblokda ishga tushiring; xato chiqsa, ekrandagi matnni yuboring |
 | Haqiqiy Hamyon (hamyon-api.uz) | Haqiqiy API hujjati sizdagi kabinetda, mock bilan sinaldi | Admin → To'lovlar → "Hamyon ulanishini tekshirish", keyin kichik summa bilan sinov to'lovi |
 | myxvest.ru hosting | Hosting yo'q | Diagnostika → "Barchasini tekshirish": "Fayl ruxsatlari" yashil bo'lishi kerak |
 

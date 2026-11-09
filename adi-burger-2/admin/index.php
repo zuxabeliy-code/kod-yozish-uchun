@@ -15,6 +15,7 @@ session_boot();
 require __DIR__ . '/inc/ui.php';
 require __DIR__ . '/inc/actions.php';
 require __DIR__ . '/inc/pages.php';
+require __DIR__ . '/inc/receipt_page.php';
 
 $page = preg_replace('~[^a-z_]~', '', (string)($_GET['p'] ?? 'dashboard')) ?: 'dashboard';
 
@@ -40,6 +41,7 @@ try {
     if (!$me) {
         redirect('login');
     }
+    schema_autoupdate();
     if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         csrf_check();
         $action = preg_replace('~[^a-z_.]~', '', (string)($_POST['a'] ?? ''));
@@ -52,7 +54,7 @@ try {
         exit;
     }
     $fn = 'page_' . $page;
-    if (!function_exists($fn) || !isset(ADMIN_MENU[$page]) && !in_array($page, ['order', 'product', 'shift_view', 'employee'], true)) {
+    if (!function_exists($fn) || !isset(ADMIN_MENU[$page]) && !in_array($page, ['order', 'product', 'shift_view', 'employee', 'logo_raster'], true)) {
         $fn = 'page_dashboard';
         $page = 'dashboard';
     }

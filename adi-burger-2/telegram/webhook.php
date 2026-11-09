@@ -4,6 +4,10 @@ declare(strict_types=1);
 /**
  * Telegram webhook. Faqat Telegram'dan kelgan (maxfiy token bilan) so'rovlar qabul qilinadi.
  * Bot o'chirilgan yoki xato bo'lsa ham kassa va admin panel ishlashda davom etadi.
+ *
+ * Ikki marta javob bermaslik uchun:
+ *  1) Telegram'ga darhol "ok" qaytariladi (sekin javobda Telegram xabarni qayta yuboradi);
+ *  2) har bir update_id faqat bir marta qayta ishlanadi.
  */
 
 require dirname(__DIR__) . '/bootstrap.php';
@@ -16,12 +20,39 @@ if ($secret === '' || !hash_equals($secret, (string)($_SERVER['HTTP_X_TELEGRAM_B
 }
 
 $u = json_decode((string)file_get_contents('php://input'), true);
+
+// 1) Telegram'ga darhol javob, ish esa orqa fonda davom etadi
+ignore_user_abort(true);
+@set_time_limit(60);
+http_response_code(200);
+header('Content-Type: text/plain');
+header('Content-Length: 2');
+header('Connection: close');
+echo 'ok';
+if (function_exists('fastcgi_finish_request')) {
+    fastcgi_finish_request();
+} else {
+    while (ob_get_level() > 0) {
+        @ob_end_flush();
+    }
+    @flush();
+}
+
 if (!is_array($u)) {
     exit;
 }
 
-// Telegram'ga darhol 200 qaytaramiz (u qayta yubormasligi uchun), xato bo'lsa logga yoziladi
 try {
+    // 2) takroriy xabarni bloklash (atomik: INSERT IGNORE)
+    $uid = (int)($u['update_id'] ?? 0);
+    if ($uid > 0) {
+        if (!q('INSERT IGNORE INTO tg_updates (update_id) VALUES (?)', [$uid])->rowCount()) {
+            exit;
+        }
+        if (random_int(1, 50) === 1) {
+            q('DELETE FROM tg_updates WHERE created_at < NOW() - INTERVAL 2 DAY');
+        }
+    }
     if (isset($u['message'])) {
         bot_message($u['message']);
     } elseif (isset($u['callback_query'])) {
@@ -30,15 +61,32 @@ try {
 } catch (Throwable $e) {
     log_exception($e, 'webhook');
 }
-http_response_code(200);
-echo 'ok';
+exit;
 
+/**
+ * Pastki menyu — oddiy matn tugmalar. Diqqat: pastki klaviaturadagi web_app tugmasi ba'zi Telegram ilovalarida
+ * foydalanuvchi ma'lumotini (initData) bermaydi va mini ilova "Telegram ichida ochiladi" xatosini beradi.
+ * Shuning uchun «Buyurtma berish» bosilganda bot ichki (inline) web_app tugmasini yuboradi.
+ */
 function bot_menu(): array
 {
     return ['keyboard' => [
-        [['text' => '🍔 Buyurtma berish', 'web_app' => ['url' => tg_webapp_url()]]],
+        [['text' => '🍔 Buyurtma berish']],
         [['text' => '📦 Buyurtmalarim'], ['text' => "📞 Bog'lanish"]],
     ], 'resize_keyboard' => true, 'is_persistent' => true];
+}
+
+/** Mini ilovani ochadigan inline tugma (initData doim keladi). */
+function bot_open_app(int $chat): void
+{
+    $brand = e(setting('brand_name'));
+    $head = '';
+    if (!is_work_time()) {
+        $head = "⏰ <b>Hozir ish vaqti emas.</b> Ish vaqti: <b>" . e(setting('work_open')) . ' – ' . e(setting('work_close')) . "</b>\nMenyuni ko'rishingiz mumkin, buyurtma ish vaqtida qabul qilinadi.\n\n";
+    }
+    tg_send($chat, $head . "🍔 <b>$brand</b> menyusini ochish uchun pastdagi tugmani bosing:", ['inline_keyboard' => [[
+        ['text' => '🍔 Menyuni ochish', 'web_app' => ['url' => tg_webapp_url()]],
+    ]]]);
 }
 
 function bot_message(array $m): void
@@ -67,9 +115,14 @@ function bot_message(array $m): void
         return;
     }
     if (str_starts_with($text, '/start') || $text === '/menu') {
+        // Bitta xabar: salomlashish + pastki menyu
         tg_send($chat, "Assalomu alaykum! <b>" . e($brand) . "</b> ga xush kelibsiz 🍔\n\n"
             . "Buyurtma berish uchun pastdagi <b>«🍔 Buyurtma berish»</b> tugmasini bosing.\n"
             . 'Ish vaqti: ' . e(setting('work_open')) . ' – ' . e(setting('work_close')), bot_menu());
+        return;
+    }
+    if ($text === '🍔 Buyurtma berish' || $text === '/order') {
+        bot_open_app($chat);
         return;
     }
     if ($text === '📦 Buyurtmalarim' || $text === '/orders') {

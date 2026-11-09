@@ -225,39 +225,52 @@ function page_categories(array $me): void
 
 function page_tables(array $me): void
 {
-    $list = rows('SELECT * FROM dining_tables ORDER BY sort, id');
-    $open = [];
-    foreach (rows("SELECT table_id, COUNT(*) n, SUM(total) s FROM orders WHERE type = 'table' AND status = 'accepted' GROUP BY table_id") as $r) {
-        $open[(int)$r['table_id']] = $r;
-    }
+    $list = rows("SELECT t.*, (SELECT COUNT(*) FROM orders o WHERE o.table_id = t.id AND o.status = 'accepted') AS open_n,
+                  (SELECT COUNT(*) FROM orders o WHERE o.table_id = t.id) AS used_n FROM dining_tables t ORDER BY t.sort, t.id");
     $edit = isset($_GET['edit']) ? row('SELECT * FROM dining_tables WHERE id = ?', [(int)$_GET['edit']]) : null;
     $e = $edit ?? ['id' => 0, 'name' => 'Stol ' . (count($list) + 1), 'sort' => count($list) + 1, 'is_active' => 1];
-    $h = '<div class="grid2 wide-left"><div class="card"><p class="muted small">Stol holati kassadagi oxirgi sinxronlashdan olinadi.</p><div class="tables">';
+    $h = '<div class="grid2 wide-left"><div class="card"><div class="row-between"><h3>Stollar (' . count($list) . ')</h3>'
+        . ($list ? action_btn('table.delete_all', [], '🗑 Hammasini o\'chirish', 'btn sm danger', "Barcha stollar o'chiriladi (tarixda ishlatilganlari yashiriladi, ochiq hisobi borlari qoladi). Davom etasizmi?") : '') . '</div>'
+        . '<div class="tw"><table class="t"><tr><th>Nomi</th><th>Tartib</th><th>Holat</th><th>Hozir</th><th></th></tr>';
     foreach ($list as $t) {
-        $o = $open[(int)$t['id']] ?? null;
-        $h .= '<a class="tcard ' . ($o ? 'busy' : '') . ($t['is_active'] ? '' : ' dim') . '" href="' . url('tables', ['edit' => $t['id']]) . '"><b>' . e($t['name']) . '</b><span>' . ($o ? $o['n'] . ' ta hisob · ' . nf($o['s']) : "Bo'sh") . '</span></a>';
+        $note = $t['used_n'] > 0 ? ' (tarixda ishlatilgan — yashiriladi)' : '';
+        $h .= '<tr' . ($t['is_active'] ? '' : ' class="dim"') . '><td><b>' . e($t['name']) . '</b></td><td>' . (int)$t['sort'] . '</td><td>'
+            . ($t['is_active'] ? '<span class="badge green">Faol</span>' : '<span class="badge gray">Yashirin</span>') . '</td><td>'
+            . ($t['open_n'] ? '<span class="badge yellow">' . (int)$t['open_n'] . ' ta ochiq hisob</span>' : '<span class="muted small">Bo\'sh</span>') . '</td><td class="r nowrap">'
+            . '<a class="btn sm" href="' . url('tables', ['edit' => $t['id']]) . '">✎</a> '
+            . action_btn('table.delete', ['id' => $t['id']], '🗑 O\'chirish', 'btn sm danger', "«{$t['name']}» o'chirilsinmi?$note") . '</td></tr>';
     }
-    $h .= '</div></div><div class="card"><h3>' . ($edit ? 'Tahrirlash' : 'Yangi stol') . '</h3>' . form_open('table.save', ['id' => $e['id']]) . field('Nomi', 'name', $e['name'], 'text', 'required')
-        . field('Tartib', 'sort', $e['sort'], 'number') . field('Faol', 'is_active', $e['is_active'], 'checkbox') . '<button class="btn primary w100">Saqlash</button></form><hr>'
+    if (!$list) {
+        $h .= '<tr><td colspan="5" class="muted">Stol yo\'q. O\'ngdan qo\'shing.</td></tr>';
+    }
+    $h .= '</table></div><p class="muted small">Stol tarixda ishlatilgan bo\'lsa, hisobotlar buzilmasligi uchun u o\'chirilmaydi, faqat yashiriladi (kassada ko\'rinmaydi). Ochiq hisobi bor stolni avval kassada yoping.</p></div>'
+        . '<div class="card"><h3>' . ($edit ? 'Tahrirlash' : 'Yangi stol') . '</h3>' . form_open('table.save', ['id' => $e['id']]) . field('Nomi', 'name', $e['name'], 'text', 'required')
+        . field('Tartib', 'sort', $e['sort'], 'number') . field('Faol', 'is_active', $e['is_active'], 'checkbox') . '<button class="btn primary w100">Saqlash</button></form>'
+        . ($edit ? '<div class="btns" style="margin-top:8px"><a class="btn" href="' . url('tables') . '">Bekor</a></div>' : '') . '<hr>'
         . form_open('table.bulk') . field("Bir nechta stol qo'shish", 'count', 5, 'number', 'min="1" max="100"') . '<button class="btn w100">Qo\'shish</button></form></div></div>';
     layout('tables', 'Stollar', $h, $me);
 }
 
 function page_employees(array $me): void
 {
-    $list = rows('SELECT e.*, u.username, u.last_login_at FROM employees e LEFT JOIN users u ON u.employee_id = e.id ORDER BY e.is_active DESC, e.id');
+    $list = rows('SELECT e.*, u.username FROM employees e LEFT JOIN users u ON u.employee_id = e.id ORDER BY e.is_active DESC, e.id');
     $edit = isset($_GET['edit']) ? row('SELECT e.*, u.username FROM employees e LEFT JOIN users u ON u.employee_id = e.id WHERE e.id = ?', [(int)$_GET['edit']]) : null;
-    $e = $edit ?? ['id' => 0, 'name' => '', 'role' => 'cashier', 'is_active' => 1, 'username' => ''];
-    $h = '<div class="grid2 wide-left"><div class="card"><table class="t"><tr><th>Ism</th><th>Rol</th><th>Admin login</th><th>Holat</th><th></th></tr>';
+    $e = $edit ?? ['id' => 0, 'name' => '', 'role' => 'cashier', 'is_active' => 1, 'username' => '', 'login' => '', 'pw_hash' => null];
+    $curLogin = (string)($e['login'] ?? '') !== '' ? $e['login'] : ($e['username'] ?? '');
+    $h = '<div class="grid2 wide-left"><div class="card"><table class="t"><tr><th>Ism</th><th>Rol</th><th>Login</th><th>Holat</th><th></th></tr>';
     foreach ($list as $x) {
-        $h .= '<tr' . ($x['is_active'] ? '' : ' class="dim"') . '><td><b>' . e($x['name']) . '</b></td><td>' . ($x['role'] === 'admin' ? 'Administrator' : 'Kassir') . '</td><td>' . e($x['username'] ?? '—') . '</td><td>' . ($x['is_active'] ? '<span class="badge green">Faol</span>' : '<span class="badge gray">O\'chirilgan</span>') . '</td><td class="r"><a class="btn sm" href="' . url('employees', ['edit' => $x['id']]) . '">✎</a></td></tr>';
+        $lg = (string)($x['login'] ?? '') !== '' ? $x['login'] : ($x['username'] ?? '');
+        $h .= '<tr' . ($x['is_active'] ? '' : ' class="dim"') . '><td><b>' . e($x['name']) . '</b></td><td>' . ($x['role'] === 'admin' ? 'Administrator' : 'Kassir') . '</td><td>' . ($lg !== '' ? e($lg) . ($x['pw_hash'] ? '' : ' <span class="badge yellow" title="Kassaga login bilan kirish uchun parolni qayta kiriting">parol kiriting</span>') : '<span class="muted">—</span>') . '</td><td>'
+            . ($x['is_active'] ? '<span class="badge green">Faol</span>' : '<span class="badge gray">O\'chirilgan</span>') . '</td><td class="r"><a class="btn sm" href="' . url('employees', ['edit' => $x['id']]) . '">✎</a></td></tr>';
     }
-    $h .= '</table><p class="muted small">Kassir kassaga faqat 4 xonali PIN bilan kiradi. PIN bazada ochiq holda saqlanmaydi (PBKDF2 xesh). Xodim o\'chirilmaydi — "faol emas" qilinadi, tarix saqlanadi.</p></div>'
+    $h .= '</table><p class="muted small">Kassir kassaga <b>4 xonali PIN</b> yoki <b>login va parol</b> bilan kiradi. PIN va parol bazada ochiq saqlanmaydi (PBKDF2 xesh). Admin panelga faqat administrator kira oladi. Xodim o\'chirilmaydi — "faol emas" qilinadi, tarix saqlanadi.</p></div>'
         . '<div class="card"><h3>' . ($edit ? 'Tahrirlash' : 'Yangi xodim') . '</h3>' . form_open('employee.save', ['id' => $e['id']])
         . field('Ism', 'name', $e['name'], 'text', 'required') . select_field('Rol', 'role', ['cashier' => 'Kassir', 'admin' => 'Administrator'], $e['role'])
         . field($edit ? 'Yangi PIN (o\'zgartirmasangiz bo\'sh qoldiring)' : 'PIN (4 raqam)', 'pin', '', 'text', 'inputmode="numeric" pattern="\d{4}" maxlength="4" autocomplete="off"' . ($edit ? '' : ' required'))
-        . '<div class="admin-only"><p class="muted small">Administrator uchun admin panel logini:</p>' . field('Login', 'username', $e['username'] ?? '', 'text', 'autocomplete="off"') . field($edit ? 'Yangi parol (bo\'sh — o\'zgarmaydi)' : 'Parol (kamida 8 belgi)', 'password', '', 'password', 'autocomplete="new-password"') . '</div>'
-        . field('Faol', 'is_active', $e['is_active'], 'checkbox') . '<button class="btn primary w100">Saqlash</button></form></div></div>';
+        . '<p class="muted small" style="margin:6px 0">Login va parol (ixtiyoriy): kassir kassaga PIN o\'rniga shu bilan ham kira oladi.</p>'
+        . field('Login', 'username', $curLogin, 'text', 'autocomplete="off" maxlength="50"') . field($edit ? 'Yangi parol (bo\'sh — o\'zgarmaydi)' : 'Parol (kassir uchun kamida 6, administrator uchun 8 belgi)', 'password', '', 'password', 'autocomplete="new-password"')
+        . field('Faol', 'is_active', $e['is_active'], 'checkbox') . '<button class="btn primary w100">Saqlash</button></form>'
+        . ($edit ? '<div class="btns" style="margin-top:8px"><a class="btn" href="' . url('employees') . '">Bekor</a></div>' : '') . '</div></div>';
     layout('employees', 'Kassir va administrator', $h, $me);
 }
 
@@ -381,9 +394,14 @@ function page_telegram(array $me): void
         . field('Admin Telegram ID lari (vergul bilan)', 'admin_tg_ids', setting('admin_tg_ids'), 'text', '', 'Yangi buyurtma xabari shu ID larga boradi. ID ni @userinfobot dan bilib oling.')
         . field('Botni yoqish (buyurtma qabul qilish)', 'bot_enabled', setting_on('bot_enabled'), 'checkbox', '', "O'chirilsa ham kassa va admin panel ishlayveradi.")
         . field('Olib ketish', 'bot_pickup', setting_on('bot_pickup'), 'checkbox') . field('Yetkazib berish', 'bot_delivery', setting_on('bot_delivery'), 'checkbox')
-        . '<div class="row2">' . field("Yetkazish narxi (so'm)", 'delivery_fee', setting('delivery_fee'), 'number', 'min="0"') . field("Minimal buyurtma (so'm)", 'min_order', setting('min_order'), 'number', 'min="0"') . '</div>'
+        . '<div class="row2">' . field("Yetkazish narxi, so'm (0 — bepul)", 'delivery_fee', setting('delivery_fee'), 'number', 'min="0"') . field("Minimal buyurtma (so'm)", 'min_order', setting('min_order'), 'number', 'min="0"') . '</div>'
+        . '<div class="row2">' . field("Tayyorlanish vaqti (daqiqa)", 'prep_minutes', setting('prep_minutes'), 'number', 'min="0" max="240"', 'Qabul qilinganda mijozga yoziladi. 0 — yozilmaydi.') . field("Mijoz bekor qilishi mumkin (daqiqa)", 'cancel_minutes', setting('cancel_minutes'), 'number', 'min="0" max="30"', "Buyurtma tushgandan keyin, qabul qilinmaguncha. 0 — bekor qila olmaydi.") . '</div>'
         . '<div class="row2">' . field('Ish boshlanishi', 'work_open', setting('work_open'), 'time') . field('Ish tugashi', 'work_close', setting('work_close'), 'time') . '</div>'
         . field("Bog'lanish matni", 'contact_text', setting('contact_text'), 'textarea', 'rows="3"')
+        . '<h3 style="margin-top:14px">✍️ Mijozga ko\'rinadigan yozuvlar</h3><p class="muted small">Mini ilovada buyurtma berish oynasida mijozga ko\'rsatiladi. Bo\'sh qoldirsangiz, hech narsa chiqmaydi.</p>'
+        . field('Yetkazib berish yozuvi', 'bot_note_delivery', setting('bot_note_delivery'), 'textarea', 'rows="3" maxlength="1000"', "Masalan: Yetkazish narxi masofaga qarab. Buyurtmadan keyin operator qo'ng'iroq qiladi.")
+        . field('Olib ketish yozuvi', 'bot_note_pickup', setting('bot_note_pickup'), 'textarea', 'rows="2" maxlength="1000"', "Masalan: Manzil: Andijon, Navoiy ko'chasi 5. Buyurtma 15 daqiqada tayyor bo'ladi.")
+        . field("To'lov oldidan yozuv", 'bot_note_pay', setting('bot_note_pay'), 'textarea', 'rows="2" maxlength="1000"', "Masalan: Karta orqali to'lasangiz, chekni shu yerga yuboring.")
         . '<button class="btn primary w100">Saqlash</button></form></div><div class="card"><h3>Holat</h3>'
         . '<div class="kv"><span>Bot</span><b>' . ($uname ? '<a href="https://t.me/' . e($uname) . '" target="_blank">@' . e($uname) . '</a>' : ($tok ? 'Token bor' : 'Ulanmagan')) . '</b></div>'
         . '<div class="kv"><span>Buyurtma qabul qilish</span><b>' . (setting_on('bot_enabled') ? '<span class="badge green">Yoqilgan</span>' : '<span class="badge gray">O\'chiq</span>') . '</b></div>';
@@ -402,14 +420,11 @@ function page_telegram(array $me): void
 function page_pos(array $me): void
 {
     $devices = rows('SELECT * FROM devices ORDER BY id DESC');
-    $h = '<div class="grid2"><div class="card">' . form_open('settings.pos') . '<h3>Chek sozlamalari</h3>'
+    $h = '<div class="grid2"><div class="card">' . form_open('settings.pos') . '<h3>Do\'kon va avtomatik cheklar</h3>'
         . field("Do'kon nomi (chek sarlavhasi)", 'brand_name', setting('brand_name')) . '<div class="row2">' . field('Telefon', 'brand_phone', setting('brand_phone')) . field('Manzil', 'brand_address', setting('brand_address')) . '</div>'
-        . field('Chek oxiridagi matn', 'receipt_footer', setting('receipt_footer'))
-        . select_field("Standart chek o'lchami", 'paper_width', ['80' => '80 mm', '58' => '58 mm'], setting('paper_width'))
         . field('Buyurtma tasdiqlanganda oshxona chekini avtomatik chiqarish', 'kitchen_auto', setting_on('kitchen_auto'), 'checkbox')
         . field("To'lovda mijoz chekini avtomatik chiqarish", 'customer_auto', setting_on('customer_auto'), 'checkbox')
-        . '<div class="row2">' . field('Oshxona cheki nusxasi', 'kitchen_copies', setting('kitchen_copies'), 'number', 'min="1" max="3"') . field('Mijoz cheki nusxasi', 'customer_copies', setting('customer_copies'), 'number', 'min="1" max="3"') . '</div>'
-        . '<button class="btn primary w100">Saqlash</button></form></div>';
+        . '<button class="btn primary w100">Saqlash</button></form><p class="muted small" style="margin-top:10px">Chekning ko\'rinishi (logo, matnlar, tartib, o\'lcham) alohida bo\'limda: <a href="' . url('receipt') . '"><b>🧾 Chek dizayni</b></a></p></div>';
     $h .= '<div class="card"><h3>Monoblokka o\'rnatish</h3><ol class="steps"><li>Monoblokda shu sahifani oching va <b>kassa-ornatish.bat</b> ni yuklab oling.</li><li>Faylni ikki marta bosing. Windows ogohlantirsa: «Подробнее» → «Выполнить в любом случае».</li>'
         . '<li>O\'rnatuvchi printer xizmatini o\'rnatadi, avtozapuskka qo\'yadi va ish stolida <b>ADI BURGER POS</b> yorlig\'ini yaratadi.</li><li>Kassada ⚙ Sozlamalar → Printer: Xprinter IP manzili, port (9100) va chek o\'lchamini kiriting → Saqlash → Test chek.</li></ol>'
         . '<a class="btn primary" href="' . e(url('download', ['f' => 'bat'])) . '">⬇ kassa-ornatish.bat</a> <a class="btn" href="../windows/adi-printer.exe">⬇ adi-printer.exe</a>'

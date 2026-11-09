@@ -100,7 +100,9 @@ export function promptBox(title, label, { value = '', placeholder = '', textarea
 
 // ---------- Ovoz (fayl kerak emas — WebAudio) ----------
 let actx = null;
+export const audio = { muted: false };
 export function beep(freq = 880, ms = 160, vol = 0.25) {
+  if (audio.muted) return;
   try {
     actx = actx || new (window.AudioContext || window.webkitAudioContext)();
     if (actx.state === 'suspended') actx.resume();

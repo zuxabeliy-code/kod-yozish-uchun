@@ -321,3 +321,10 @@ CREATE TABLE IF NOT EXISTS card_receipts (
   KEY idx_cr_order (order_id),
   CONSTRAINT fk_cr_order FOREIGN KEY (order_id) REFERENCES orders(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Telegram xabarlari ikki marta qayta ishlanmasligi uchun (Telegram sekin javobda xabarni qayta yuboradi)
+CREATE TABLE IF NOT EXISTS tg_updates (
+  update_id BIGINT NOT NULL PRIMARY KEY,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_tgu_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

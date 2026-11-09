@@ -45,7 +45,7 @@ function app_url(string $path = ''): string
     return $base . ($path === '' ? '' : '/' . ltrim($path, '/'));
 }
 
-function json_out(array $data, int $code = 200): never
+function json_out(array $data, int $code = 200)
 {
     http_response_code($code);
     header('Content-Type: application/json; charset=utf-8');

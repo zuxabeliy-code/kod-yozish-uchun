@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"strings"
 	"unicode/utf8"
 )
@@ -20,11 +21,19 @@ type Line struct {
 	Size  int    `json:"s,omitempty"` // 1 — oddiy, 2 — ikki barobar
 	Ch    string `json:"ch,omitempty"`
 	N     int    `json:"n,omitempty"`
+	// Type == "img": 1-bitli rasm (logo). W — piksel (8 ga karrali), H — qatorlar, B64 — qatorma-qator baytlar (MSB birinchi, 1 = qora).
+	W   int    `json:"w,omitempty"`
+	H   int    `json:"h,omitempty"`
+	B64 string `json:"b64,omitempty"`
+	Ref string `json:"ref,omitempty"` // navbatda rasm nusxasi saqlangan kalit (B64 o'rniga)
 }
 
 type Doc struct {
 	Lines []Line `json:"lines"`
 	Beep  bool   `json:"beep,omitempty"`
+	Font  string `json:"font,omitempty"` // "a" (oddiy) yoki "b" (kichik)
+	LS    int    `json:"ls,omitempty"`   // qator oralig'i (nuqta), standart 30
+	ML    int    `json:"ml,omitempty"`   // chap va o'ng chet (nuqta)
 }
 
 var (
@@ -41,12 +50,78 @@ var (
 	escBeep      = []byte{0x1B, 0x42, 0x02, 0x02} // Xprinter: 2 marta signal
 )
 
-// Qatordagi belgilar soni: 80 mm — 48, 58 mm — 32 (A shrift).
-func charsPerLine(width int) int {
+// Qog'ozning nuqtalardagi eni: 80 mm — 576, 58 mm — 384 (203 dpi).
+func paperDots(width int) int {
 	if width == 58 {
-		return 32
+		return 384
 	}
-	return 48
+	return 576
+}
+
+// Chop etiladigan qismdagi belgilar soni: A shrift 12 nuqta, B shrift 9 nuqta; chetlar (ml) ikki tomondan ayriladi.
+// Chetsiz: 80 mm — 48 (A) / 64 (B), 58 mm — 32 (A) / 42 (B).
+func charsPerLine(width int, font string, ml int) int {
+	cw := 12
+	if font == "b" {
+		cw = 9
+	}
+	return maxInt(8, (paperDots(width)-2*ml)/cw)
+}
+
+// rasterBytes: logo rasmini to'liq kenglikdagi (chop etiladigan qism) bitmapga joylashtiradi va GS v 0 buyruqlariga aylantiradi.
+// 58 mm da rasm 384/576 nisbatda proporsional kichraytiriladi.
+func rasterBytes(ln Line, b64 string, paper, printable int, align string) []byte {
+	data, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil || ln.W < 8 || ln.W > 1024 || ln.H < 1 || ln.H > 1024 || ln.W%8 != 0 || len(data) != ln.W/8*ln.H {
+		return nil
+	}
+	srcRow := ln.W / 8
+	get := func(x, y int) bool { return data[y*srcRow+x/8]&(0x80>>uint(x%8)) != 0 }
+	w, h := ln.W, ln.H
+	scale := 1.0
+	if paper == 58 {
+		scale = 384.0 / 576.0
+	}
+	if float64(w)*scale > float64(printable) {
+		scale = float64(printable) / float64(w)
+	}
+	tw, th := int(float64(w)*scale), maxInt(1, int(float64(h)*scale))
+	tw = maxInt(8, tw/8*8)
+	full := (printable + 7) / 8 * 8
+	off := 0
+	switch align {
+	case "c":
+		off = (full - tw) / 2
+	case "r":
+		off = full - tw
+	}
+	off = off / 8 * 8
+	rowBytes := full / 8
+	bm := make([]byte, rowBytes*th)
+	for y := 0; y < th; y++ {
+		sy := minInt(h-1, int(float64(y)/scale))
+		for x := 0; x < tw; x++ {
+			sx := minInt(w-1, int(float64(x)/scale))
+			if get(sx, sy) {
+				px := off + x
+				bm[y*rowBytes+px/8] |= 0x80 >> uint(px%8)
+			}
+		}
+	}
+	var out bytes.Buffer
+	for y0 := 0; y0 < th; y0 += 128 {
+		rows := minInt(128, th-y0)
+		out.Write([]byte{0x1D, 0x76, 0x30, 0x00, byte(rowBytes & 0xFF), byte(rowBytes >> 8), byte(rows & 0xFF), byte(rows >> 8)})
+		out.Write(bm[y0*rowBytes : (y0+rows)*rowBytes])
+	}
+	return out.Bytes()
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // normalizeText: o'zbek lotin apostroflarini ASCII ga keltiradi, boshqarish belgilarini olib tashlaydi.
@@ -154,8 +229,33 @@ func Render(d Doc, paperWidth int, cut bool) []byte {
 	var b bytes.Buffer
 	b.Write(escInit)
 	b.Write(escCodepage)
-	base := charsPerLine(paperWidth)
+	font := "a"
+	if d.Font == "b" {
+		font = "b"
+		b.Write([]byte{0x1B, 0x4D, 1})
+	}
+	if d.LS >= 10 && d.LS <= 120 {
+		b.Write([]byte{0x1B, 0x33, byte(d.LS)})
+	}
+	ml := d.ML
+	if ml < 0 {
+		ml = 0
+	}
+	if ml > 120 {
+		ml = 120
+	}
+	printable := paperDots(paperWidth) - 2*ml
+	if ml > 0 {
+		b.Write([]byte{0x1D, 0x4C, byte(ml & 0xFF), byte(ml >> 8)})
+		b.Write([]byte{0x1D, 0x57, byte(printable & 0xFF), byte(printable >> 8)})
+	}
+	base := charsPerLine(paperWidth, font, ml)
 	for _, ln := range d.Lines {
+		if ln.Type == "img" {
+			b.Write(escAlignL)
+			b.Write(rasterBytes(ln, ln.B64, paperWidth, printable, ln.Align))
+			continue
+		}
 		size := ln.Size
 		if size != 2 {
 			size = 1

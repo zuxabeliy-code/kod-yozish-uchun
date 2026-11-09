@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"io"
 	"net"
 	"os"
@@ -230,4 +231,50 @@ func TestRenderWidths(t *testing.T) {
 		t.Fatal("kirill kodlash")
 	}
 	_ = io.Discard
+}
+
+func TestLogoImageAndLayoutOptions(t *testing.T) {
+	// 16x2 piksel rasm: birinchi qator to'liq qora
+	raw := []byte{0xFF, 0xFF, 0x00, 0x00}
+	b64 := base64.StdEncoding.EncodeToString(raw)
+	d := Doc{Font: "b", LS: 36, ML: 24, Lines: []Line{{Type: "img", W: 16, H: 2, B64: b64, Align: "c"}, {T: strings.Repeat("A", 60)}}}
+	out := Render(d, 80, true)
+	if !bytes.Contains(out, []byte{0x1D, 0x76, 0x30, 0x00}) {
+		t.Fatal("GS v 0 rasm buyrug'i yo'q")
+	}
+	if !bytes.Contains(out, []byte{0x1B, 0x4D, 1}) || !bytes.Contains(out, []byte{0x1B, 0x33, 36}) || !bytes.Contains(out, []byte{0x1D, 0x4C, 24, 0}) {
+		t.Fatal("shrift B, qator oralig'i yoki chet buyrug'i yo'q")
+	}
+	// (576-48)/9 = 58 belgi: 60 ta "A" ikki qatorga bo'linishi kerak
+	if bytes.Contains(out, []byte(strings.Repeat("A", 60))) {
+		t.Fatal("chet hisobga olinmadi")
+	}
+	if charsPerLine(80, "b", 0) != 64 || charsPerLine(58, "a", 0) != 32 || charsPerLine(58, "b", 0) != 42 || charsPerLine(80, "a", 0) != 48 {
+		t.Fatal("belgilar soni noto'g'ri")
+	}
+	// Rasm markazga joylashadi: to'liq kenglik (528 nuqta = 66 bayt), rasm 16 nuqta (2 bayt) markazda
+	i := bytes.Index(out, []byte{0x1D, 0x76, 0x30, 0x00})
+	rowBytes := int(out[i+4]) | int(out[i+5])<<8
+	if rowBytes != 66 {
+		t.Fatalf("rasm qator kengligi %d bayt, 66 bo'lishi kerak", rowBytes)
+	}
+	first := out[i+8 : i+8+rowBytes]
+	if first[0] != 0 || first[32] != 0xFF || first[33] != 0xFF {
+		t.Fatalf("rasm markazga qo'yilmadi: %v", first)
+	}
+	// Navbat rasmni alohida saqlaydi va chop etishda qaytaradi
+	dataDir = t.TempDir()
+	q := NewQueue(dataDir, getCfg)
+	q.Add(&Job{ID: "job-logo-0001", Kind: "customer", Doc: d})
+	jj := q.Get("job-logo-0001")
+	if jj.Doc.Lines[0].B64 != "" || jj.Doc.Lines[0].Ref == "" {
+		t.Fatal("rasm chek ichida qolib ketdi")
+	}
+	if q.resolveDoc(jj.Doc).Lines[0].B64 != b64 {
+		t.Fatal("rasm tiklanmadi")
+	}
+	q2 := NewQueue(dataDir, getCfg) // qayta ishga tushganda ham saqlanadi
+	if q2.resolveDoc(q2.Get("job-logo-0001").Doc).Lines[0].B64 != b64 {
+		t.Fatal("rasm qayta yuklanganda yo'qoldi")
+	}
 }

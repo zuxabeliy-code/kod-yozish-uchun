@@ -4,5 +4,6 @@ storage/logs/*
 storage/backups/*
 storage/cache/*
 uploads/receipts/*
+uploads/logo/*
 !**/.htaccess
 !**/.gitkeep

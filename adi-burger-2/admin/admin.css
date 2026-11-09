@@ -149,3 +149,24 @@ tr.dim td { opacity: .5; }
 .login { width: min(380px, 100%); text-align: center; }
 .login h1 { margin: 0; font-size: 22px; }
 .login .field { text-align: left; }
+
+/* Chek dizayneri */
+.rc-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(340px, .9fr); gap: 14px; align-items: start; }
+@media (max-width: 1000px) { .rc-layout { grid-template-columns: 1fr; } .rc-right { order: -1; } }
+input[type=range] { width: 100%; height: 30px; padding: 0; accent-color: var(--brand); }
+.blk { background: var(--card2); border: 1px solid var(--line); border-radius: 12px; padding: 10px; margin-bottom: 8px; }
+.blk.off { opacity: .55; }
+.blk-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.blk-btns { display: flex; gap: 4px; }
+.blk-b { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.blk-b select { width: auto; height: 34px; }
+.blk-b .txt { flex: 1 1 220px; height: 34px; }
+.paper-wrap { background: #1b2640; border-radius: 12px; padding: 16px 8px; overflow: auto; display: flex; justify-content: center; max-height: 70vh; }
+.paper { box-sizing: border-box; background: #fff; color: #111; letter-spacing: -.1px; font: 14px/1.25 "Courier New", Consolas, monospace; box-shadow: 0 4px 18px rgba(0,0,0,.45); padding-top: 12px; padding-bottom: 6px; }
+.paper.p80 { width: 414px; --pw: 414px; } .paper.p58 { width: 278px; --pw: 278px; }
+.paper.fb { font-size: 10.5px; } .paper.fb.p58 { font-size: 10.7px; }
+.pl { white-space: pre; line-height: calc(1.25 * var(--ls, 1)); min-height: 1.2em; overflow: hidden; }
+.pl.b { font-weight: 800; } .pl.dbl { font-size: 2em; line-height: calc(1.15 * var(--ls, 1)); }
+.pl.img canvas { image-rendering: pixelated; display: inline-block; }
+.cut { color: #888; text-align: center; margin-top: 10px; font-size: 11px; }
+.filters .btn.on { border-color: var(--brand); background: rgba(245,165,36,.15); }

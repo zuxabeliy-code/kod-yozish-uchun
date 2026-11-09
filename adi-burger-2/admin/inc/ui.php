@@ -14,6 +14,7 @@ const ADMIN_MENU = [
     'payments' => ['💳', "To'lovlar"],
     'telegram' => ['✈️', 'Telegram bot'],
     'pos' => ['🖨', 'POS va printer'],
+    'receipt' => ['🧾', 'Chek dizayni'],
     'diagnostics' => ['🩺', 'Diagnostika va ta\'mirlash'],
     'backup' => ['💾', 'Zaxira'],
 ];
@@ -23,13 +24,13 @@ function url(string $page, array $q = []): string
     return '?' . http_build_query(['p' => $page] + $q);
 }
 
-function redirect(string $page, array $q = []): never
+function redirect(string $page, array $q = [])
 {
     header('Location: ' . url($page, $q));
     exit;
 }
 
-function redirect_back(): never
+function redirect_back()
 {
     $ref = (string)($_SERVER['HTTP_REFERER'] ?? '');
     $host = (string)parse_url(app_url(), PHP_URL_HOST);

@@ -7,7 +7,7 @@ Fast food uchun savdo tizimi. Tarkibi:
 - admin panel;
 - diagnostika va ta'mirlash bo'limi.
 
-PHP 8.2 + MySQL, oddiy shared hosting (myxvest.ru) uchun moslangan. Node.js, Redis, WebSocket, SSH va cron shart emas.
+PHP 8.0+ (8.2 tavsiya) + MySQL, oddiy shared hosting (myxvest.ru) uchun moslangan. Node.js, Redis, WebSocket, SSH va cron shart emas.
 
 **O'rnatish:** `docs/ORNATISH.md` · **Test hisoboti:** `docs/TEST-HISOBOTI.md`
 
@@ -22,7 +22,7 @@ PHP 8.2 + MySQL, oddiy shared hosting (myxvest.ru) uchun moslangan. Node.js, Red
 | `telegram/` | `webhook.php` (bot) va `webapp/` (mijoz menyusi) |
 | `pay/hamyon.php` | Hamyon callback |
 | `app/` | Server mantig'i. Internetdan yopiq |
-| `database/` | `schema.sql` (21 jadval) va boshlang'ich menyu. Yopiq |
+| `database/` | `schema.sql` (22 jadval) va boshlang'ich menyu. Yopiq |
 | `config/` | `config.php` — o'rnatuvchi yaratadi. Yopiq |
 | `storage/` | Loglar, zaxiralar, kesh. Yopiq |
 | `uploads/` | Mahsulot rasmlari (ochiq) va mijoz to'lov cheklari (yopiq) |

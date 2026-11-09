@@ -28,7 +28,7 @@ Bu qo'llanma oddiy foydalanuvchi uchun yozilgan. Qadamlarni tartib bilan bajarin
 
 ## 4. PHP sozlash
 
-Hosting panelida PHP versiyasini **8.2** qiling (kamida 8.1).
+Hosting panelida PHP versiyasini **8.2** qiling. Tizim **PHP 8.0 va undan yuqori** hamma versiyada ishlaydi.
 Kerakli kengaytmalar: `pdo_mysql`, `mbstring`, `curl`, `openssl`, `json`. Tavsiya: `gd`, `zlib`.
 O'rnatuvchi bularni o'zi tekshiradi va yo'q bo'lsa aytadi.
 
@@ -68,19 +68,31 @@ O'rnatuvchi o'zini bloklaydi — qayta ochilsa "allaqachon o'rnatilgan" deydi.
 ## 7. Windows monoblokka kassani o'rnatish
 
 1. Monoblokda **Google Chrome** o'rnatilgan bo'lsin.
-2. Monoblokda admin panelni oching → **☰ → POS va printer** → **⬇ kassa-ornatish.bat**.
+2. Monoblokda admin panelni oching → **☰ → POS va printer** → **⬇ kassa-ornatish.bat** (shu bitta fayl yetarli: sayt manzili ichiga yozilgan).
 3. Barcha Chrome oynalarini yoping va faylni ikki marta bosing.
    Windows ogohlantirsa: **«Подробнее» → «Выполнить в любом случае»**.
 4. O'rnatuvchi:
    - Windows va Chrome ni tekshiradi;
-   - printer xizmatini (`adi-printer.exe`) o'rnatadi va Windows bilan birga ishga tushadigan qiladi;
+   - **sayt manzilini tozalab, saytni haqiqatan tekshiradi** (manzilga `/pos` yoki `/admin` yozib yuborsangiz ham o'zi to'g'rilaydi);
+   - printer xizmatini (`adi-printer.exe`) saytdan yuklab o'rnatadi (fayl yoniga qo'yish shart emas) va Windows bilan birga ishga tushadigan qiladi;
+   - kassa ochuvchi faylni o'zi yaratadi;
    - ish stolida **ADI BURGER POS** yorlig'ini yaratadi;
    - "Windows yoqilganda kassa ochilsinmi?" deb so'raydi — **H** (ha) ni bosing.
+5. Xato chiqsa, o'rnatuvchi sababini yozadi (masalan: "Saytga ulanib bo'lmadi", "Bu manzilda ADI BURGER topilmadi"). Sayt papkada o'rnatilgan bo'lsa, manzilga papka nomini ham yozing: `https://sayt.uz/Adi`.
 5. Kassa ochiladi → admin login/parol bilan **qurilmani ulang** (bir marta).
 6. Kassir PIN bilan kiradi va smenani ochadi.
 
 > Kassa — bu Chrome App Mode (PWA) oynasi: manzil satri va tablar ko'rinmaydi.
 > Bu mustaqil .exe dastur emas. Printer xizmati esa alohida kichik Windows dasturi (`adi-printer.exe`).
+
+### Kassada ishlash (qisqa)
+
+- **Tepada:** 🍽 Stolda · 🛍 Olib ketish · 🛵 Yetkazish. Har birining yonida ochiq buyurtmalar soni ko'rinadi. Tugmani bosing — shu rejimda buyurtma ochiladi.
+- **✓ Tasdiqlash** hech narsa so'ramaydi: telefon va manzil ixtiyoriy (👤 Mijoz tugmasi orqali, xohlasangiz).
+- **Yetkazish narxi** ixtiyoriy: buyurtma panelidagi maydonga o'zingiz yozasiz. Bo'sh qoldirsangiz — bepul.
+- **Oshxona cheki** — faqat taom va soni (narxsiz, mijoz raqamisiz). Ko'rinishini **Chek dizayni** bo'limida o'zgartirasiz.
+- **Mijoz cheki** (to'lovda) — mijoz ma'lumoti kiritilgan bo'lsa, telefon va manzil ham chiqadi.
+- **Kirish:** 4 xonali PIN yoki «Login va parol bilan kirish».
 
 ## 8. Xprinter LAN printerni sozlash
 
@@ -97,6 +109,17 @@ O'rnatuvchi o'zini bloklaydi — qayta ochilsa "allaqachon o'rnatilgan" deydi.
 4. Maslahat: routerda printerga doimiy IP bering (DHCP reservation), aks holda IP o'zgarib qolishi mumkin.
 
 USB printer bo'lsa: Ulanish turi **USB (Windows printer)** → ro'yxatdan printerni tanlang.
+
+## 8.1. Chek dizayni (admin panel → ☰ → 🧾 Chek dizayni)
+
+Chekni o'zingiz xohlagandek sozlang. O'ng tomonda chek **darhol** o'zgaradi.
+
+- **Bloklar:** oshxona va mijoz cheki bloklardan iborat. Har bir blokni yoqish/o'chirish, **▲ ▼** bilan tartibini o'zgartirish, tekislash (chap/o'rta/o'ng), o'lcham (oddiy/katta) va qalinlikni tanlash mumkin.
+- **O'z matningiz:** pastdagi «＋ Blok qo'shish» → «Matn». Istalgan joyga qo'ying (masalan: Wi-Fi paroli, aksiya).
+- **Logo:** PNG yoki JPG yuklang. Kattaligi va qoraligini sozlang. Chekda oq-qora bo'lib chiqadi. Keyin «Logo» blokini yoqing va xohlagan joyga qo'ying.
+- **Umumiy:** chek eni (58/80 mm), shrift (oddiy/kichik), chap-o'ng chet, qatorlar orasi, hamma yozuvni qalin qilish, nusxalar soni.
+- **📏 O'lchov cheki** va **🖨 Namuna chek** tugmalari (kassa monoblokida ishlaydi): chizg'ich bilan o'lchab, chek eni va chetini to'g'rilang.
+- Ma'lumot kiritilmagan blok (masalan, mijoz telefoni) chekda umuman chiqmaydi.
 
 ## 9. Test chek chiqarish
 
@@ -129,12 +152,22 @@ Admin panel → **☰ → Diagnostika va ta'mirlash** → **Barchasini tekshiris
 Har bir komponent uchun holat, sabab, tavsiya va (mumkin bo'lsa) **Tuzatish** tugmasi bor.
 Hisobotni yuklab olib, yordam so'rash mumkin.
 
-## Mavjud tizimni yangilash
+## Mavjud tizimni yangilash (ma'lumot yo'qolmaydi)
 
 1. Admin → Zaxira → **Hozir zaxira olish**.
-2. Yangi ZIP ni ustidan yuklang. **`config/`, `storage/`, `uploads/` papkalarini o'chirmang.**
-3. Admin → Diagnostika → "Jadvallar" → **Tuzatish** (yangi jadvallar bo'lsa yaratiladi).
-4. Kassada **Ctrl+F5**.
+2. Yangi ZIP ni ustidan yuklang va Extract qiling (fayllarni almashtirsin). **`config/`, `storage/`, `uploads/` papkalarini o'chirmang.**
+3. Admin panelga kiring: baza **o'zi yangilanadi** (yangi jadval va ustunlar qo'shiladi, eski ma'lumot saqlanadi).
+4. Admin → ☰ → **Kassir va administrator** → o'zingizni oching va **parolni qayta kiriting** (kassaga login bilan kirish uchun).
+5. Monoblokda kassa-ornatish.bat ni qayta ishga tushiring (printer xizmati yangilanadi). Kassada **Ctrl+F5**.
+
+## Bot va stollar
+
+- **Botda «Buyurtma berish»:** tugma bosilganda bot «Menyuni ochish» tugmasini yuboradi. Menyu shu tugma yoki bot yonidagi «Menyu» tugmasi orqali ochiladi.
+- **Mijozga yozuvlar:** Admin → Telegram bot → «Mijozga ko'rinadigan yozuvlar»: yetkazish, olib ketish va to'lov oldidan yozuv. Mijoz buyurtma oynasida ko'radi.
+- **Yetkazish narxi:** Telegram bot sahifasida 0 = bepul.
+- **Stollarni o'chirish:** Admin → Stollar → 🗑. Tarixda ishlatilgan stol hisobotlar buzilmasligi uchun faqat yashiriladi.
+- **Kassir va administrator:** har biriga login va parol berish mumkin (kassir uchun kamida 6, administrator uchun 8 belgi). Admin panelga faqat administrator kiradi.
+- **Webhook ikki marta javob bermaydi:** har bir Telegram xabari faqat bir marta qayta ishlanadi.
 
 ## Cron (ixtiyoriy)
 

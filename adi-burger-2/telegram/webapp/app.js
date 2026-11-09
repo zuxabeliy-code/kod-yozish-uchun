@@ -13,6 +13,7 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function fmt(n) { return String(Math.round(n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
   function som(n) { return fmt(n) + " so'm"; }
+  function note(t) { t = String(t || '').trim(); return t ? '<div class="note">' + esc(t).replace(/\n/g, '<br>') + '</div>' : ''; }
   function saveCart() { try { localStorage.setItem('adi_cart', JSON.stringify(cart)); } catch (e) {} }
   function toast(m) { var t = document.getElementById('toast'); t.innerHTML = '<div>' + esc(m) + '</div>'; setTimeout(function () { t.innerHTML = ''; }, 2600); }
   function haptic(t) { try { TG.HapticFeedback.impactOccurred(t || 'light'); } catch (e) {} }
@@ -81,11 +82,12 @@
     var html = '<div class="wrap"><div class="hero"><h1>Savatcha</h1><button class="link" data-clear>Tozalash</button></div><div class="box">' +
       items.map(function (x) { return '<div class="line"><span class="n">' + esc(x.p.name) + '<br><small style="color:var(--hint)">' + fmt(x.p.price) + '</small></span><span class="stepper"><button data-dec="' + x.p.id + '">−</button><b>' + x.q + '</b><button data-inc="' + x.p.id + '">+</button></span><span class="s">' + fmt(x.p.price * x.q) + '</span></div>'; }).join('') + '</div>';
     html += '<div class="box"><h3>Qanday olasiz?</h3><div class="seg">' + D.types.map(function (t) { return '<button class="opt ' + (form.type === t ? 'on' : '') + '" data-type="' + t + '">' + (t === 'delivery' ? '🚚 Yetkazib berish<small>' + (D.delivery_fee ? som(D.delivery_fee) : 'Bepul') + '</small>' : '🛍 Olib ketish<small>O\'zim boraman</small>') + '</button>'; }).join('') + '</div>' +
+      (note(form.type === 'delivery' ? D.notes.delivery : D.notes.pickup)) +
       '<label class="f">Telefon raqam</label><input class="inp" id="f-phone" inputmode="tel" placeholder="+998 90 123 45 67" value="' + esc(form.phone) + '">' +
       '<label class="f">Ismingiz</label><input class="inp" id="f-name" value="' + esc(form.name) + '">' +
       (form.type === 'delivery' ? '<label class="f">Yetkazish manzili</label><textarea class="inp" id="f-addr" placeholder="Mahalla, ko\'cha, uy, mo\'ljal">' + esc(form.address) + '</textarea>' : '') +
       '<label class="f">Izoh (ixtiyoriy)</label><input class="inp" id="f-cmt" value="' + esc(form.comment || '') + '" placeholder="Masalan: piyozsiz"></div>';
-    html += '<div class="box"><h3>To\'lov usuli</h3><div class="pays">' + (D.pays.length ? D.pays.map(function (p) { return '<button class="opt ' + (form.pay === p.id ? 'on' : '') + '" data-pay="' + p.id + '">' + esc(p.name) + '<small>' + esc(p.hint) + '</small></button>'; }).join('') : '<div class="err">To\'lov usullari sozlanmagan</div>') + '</div></div>';
+    html += '<div class="box"><h3>To\'lov usuli</h3><div class="pays">' + (D.pays.length ? D.pays.map(function (p) { return '<button class="opt ' + (form.pay === p.id ? 'on' : '') + '" data-pay="' + p.id + '">' + esc(p.name) + '<small>' + esc(p.hint) + '</small></button>'; }).join('') : '<div class="err">To\'lov usullari sozlanmagan</div>') + note(D.notes.pay) + '</div></div>';
     html += '<div class="box"><div class="sum"><span>Taomlar</span><span>' + som(sum) + '</span></div>' + (fee ? '<div class="sum"><span>Yetkazish</span><span>' + som(fee) + '</span></div>' : '') + '<div class="sum t"><span>Jami</span><span>' + som(sum + fee) + '</span></div></div>';
     html += '<div id="err"></div></div><div class="bar"><button data-order ' + (D.open ? '' : 'disabled') + '><span>' + (D.open ? '✅ Buyurtma berish' : 'Hozir yopiq') + '</span><span>' + som(sum + fee) + '</span></button></div>';
     app.innerHTML = html;
@@ -136,7 +138,7 @@
       var r = o.receipt;
       html += '<div class="box"><h3>💳 Kartaga o\'tkazma</h3><div class="sum t"><span>To\'lanadigan summa</span><span class="big">' + som(o.total) + '</span></div>' +
         o.cards.map(function (c) { return '<div class="line"><span class="n"><span class="cardnum">' + esc(c.number) + '</span><br><small style="color:var(--hint)">' + esc(c.holder || '') + (c.bank ? ' · ' + esc(c.bank) : '') + '</small></span><button class="copy" data-copy="' + esc(String(c.number).replace(/\s/g, '')) + '">Nusxa</button></div>'; }).join('') +
-        '<p style="color:var(--hint);font-size:13px">1) Summani shu kartaga o\'tkazing. 2) To\'lov chekining skrinshotini pastdan yuboring. Kassir tekshirgach buyurtma tayyorlanadi.</p>' +
+        note(D.notes.pay) + '<p style="color:var(--hint);font-size:13px">1) Summani shu kartaga o\'tkazing. 2) To\'lov chekining skrinshotini pastdan yuboring. Kassir tekshirgach buyurtma tayyorlanadi.</p>' +
         (r && r.status === 'checking' ? '<div class="ok">🧾 Chek yuborildi — kassir tekshirmoqda.</div>' : '') +
         (r && r.status === 'rejected' ? '<div class="err">Chek tasdiqlanmadi' + (r.note ? ': ' + esc(r.note) : '') + '. Qayta yuboring.</div>' : '') +
         '<label class="upl" for="rfile">📎 ' + (r ? 'Boshqa chek yuborish' : 'To\'lov chekini yuborish') + '</label><input type="file" id="rfile" accept="image/*" hidden></div>';
@@ -154,6 +156,7 @@
       html += '<button class="btn2" data-cancel="' + o.uuid + '">Buyurtmani bekor qilish</button>';
     }
     if (o.status === 'pending_pay' && o.pay_method === 'card') html += '<button class="btn2" data-cancel="' + o.uuid + '">Buyurtmani bekor qilish</button>';
+    if (o.can_cancel && o.status === 'new') html += '<button class="btn2" data-cancel="' + o.uuid + '">Buyurtmani bekor qilish</button>';
     html += '<div class="box"><h3>Tarkibi</h3>' + o.items.map(function (i) { return '<div class="line"><span class="n">' + esc(i.name) + ' × ' + i.qty + '</span><span class="s">' + fmt(i.price * i.qty) + '</span></div>'; }).join('') +
       (o.delivery_fee ? '<div class="line"><span class="n">Yetkazish</span><span class="s">' + fmt(o.delivery_fee) + '</span></div>' : '') +
       '<div class="sum t"><span>Jami</span><span>' + som(o.total) + '</span></div>' + (o.address ? '<p style="color:var(--hint)">📍 ' + esc(o.address) + '</p>' : '') + '</div>';
@@ -225,7 +228,7 @@
 
   // ---------------- Start ----------------
   if (TG) { TG.ready(); TG.expand(); try { TG.setHeaderColor('secondary_bg_color'); } catch (e) {} }
-  if (!initData) { app.innerHTML = '<div class="closed"><div style="font-size:48px">🤖</div><h2>Bu sahifa Telegram bot ichida ochiladi</h2><p>Botga kiring va «🍔 Buyurtma berish» tugmasini bosing.</p></div>'; return; }
+  if (!initData) { app.innerHTML = '<div class="closed"><div style="font-size:48px">🤖</div><h2>Bu sahifa Telegram bot ichida ochiladi</h2><p>Botga kiring, «🍔 Buyurtma berish» tugmasini bosing, so\'ng chiqqan <b>«Menyuni ochish»</b> tugmasini bosing. Havolani brauzerda ochmang.</p></div>'; return; }
   api('init').then(function (r) {
     if (!r.ok) { app.innerHTML = '<div class="wrap"><div class="err">' + esc(r.error) + '</div><button class="btn1" onclick="location.reload()">Qayta urinish</button></div>'; return; }
     D = r;

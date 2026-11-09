@@ -98,8 +98,8 @@ function diag_check_php(): array
     $miss = array_values(array_filter($need, fn($e) => !extension_loaded($e)));
     $missOpt = array_filter($opt, fn($e) => !extension_loaded($e), ARRAY_FILTER_USE_KEY);
     $det = ['version' => PHP_VERSION, 'memory_limit' => ini_get('memory_limit'), 'upload_max_filesize' => ini_get('upload_max_filesize')];
-    if (version_compare(PHP_VERSION, '8.1.0', '<')) {
-        return diag_r('error', 'PHP ' . PHP_VERSION . ' eski. Kamida 8.1 kerak (8.2 tavsiya).', 'Hosting panelida PHP versiyasini 8.2 ga o\'zgartiring.', $det);
+    if (version_compare(PHP_VERSION, '8.0.0', '<')) {
+        return diag_r('error', 'PHP ' . PHP_VERSION . ' eski. Kamida 8.0 kerak (8.2 tavsiya).', 'Hosting panelida PHP versiyasini 8.2 ga o\'zgartiring.', $det);
     }
     if ($miss) {
         return diag_r('error', 'Majburiy PHP kengaytmalari yo\'q: ' . implode(', ', $miss), 'Hosting panelida (PHP sozlamalari / Extensions) shu kengaytmalarni yoqing.', $det);

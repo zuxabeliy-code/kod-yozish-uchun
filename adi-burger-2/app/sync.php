@@ -208,14 +208,16 @@ function sync_catalog(): array
         ], rows('SELECT p.* FROM products p JOIN categories c ON c.id = p.category_id WHERE p.is_active = 1 AND p.in_pos = 1 AND c.is_active = 1 ORDER BY p.sort, p.id')),
         'tables' => array_map(fn($t) => ['id' => (int)$t['id'], 'name' => $t['name']], rows('SELECT * FROM dining_tables WHERE is_active = 1 ORDER BY sort, id')),
         // PIN xeshlari kassaga internet bo'lmaganda ham kirish uchun beriladi (faqat ro'yxatdan o'tgan qurilmaga)
-        'employees' => array_map(fn($e) => ['id' => (int)$e['id'], 'name' => $e['name'], 'role' => $e['role'], 'salt' => $e['pin_salt'], 'hash' => $e['pin_hash']],
+        'employees' => array_map(fn($e) => ['id' => (int)$e['id'], 'name' => $e['name'], 'role' => $e['role'], 'salt' => $e['pin_salt'], 'hash' => $e['pin_hash'],
+            'login' => $e['login'], 'lsalt' => $e['pw_salt'], 'lhash' => $e['pw_hash']],
             rows('SELECT * FROM employees WHERE is_active = 1 ORDER BY id')),
         'pin_iterations' => PIN_ITERATIONS,
+        'receipt' => ['design' => rc_design(), 'logo' => rc_logo()],
         'settings' => [
             'brand_name' => $s['brand_name'], 'brand_phone' => $s['brand_phone'], 'brand_address' => $s['brand_address'],
             'receipt_footer' => $s['receipt_footer'], 'paper_width' => (int)$s['paper_width'],
             'kitchen_auto' => $s['kitchen_auto'] === '1', 'customer_auto' => $s['customer_auto'] === '1',
-            'kitchen_copies' => max(1, (int)$s['kitchen_copies']), 'customer_copies' => max(1, (int)$s['customer_copies']),
+            'kitchen_copies' => rc_design()['kitchen']['copies'], 'customer_copies' => rc_design()['customer']['copies'],
             'delivery_fee' => (int)$s['delivery_fee'],
             'pay_methods' => array_keys(array_filter(['cash' => $s['pos_pay_cash'] === '1', 'terminal' => $s['pos_pay_terminal'] === '1', 'click' => $s['pos_pay_click'] === '1'])),
         ],

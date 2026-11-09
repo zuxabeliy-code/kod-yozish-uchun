@@ -312,3 +312,18 @@ textarea.inp { height: 84px; padding: 10px 12px; resize: none; }
   .pill.who span:last-child { display: none; }
   .brand span { display: none; }
 }
+
+/* Tepadagi rejim tablari (Stolda / Olib ketish / Yetkazish) */
+.tab.mode { height: 42px; font-size: 15px; }
+.tab.mode .lbl { display: inline !important; }
+.tab .badge { margin-left: 2px; }
+.chip.type { color: var(--text); }
+.chip:disabled { opacity: .7; cursor: default; }
+.topc { display: grid; gap: 8px; min-width: 0; }
+.strip { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.strip:empty { display: none; }
+.schip { flex: none; height: 34px; padding: 0 12px; border-radius: 10px; background: rgba(234, 179, 8, .13); border: 1px solid rgba(234, 179, 8, .5); font-size: 13px; white-space: nowrap; }
+.fee { align-items: center; }
+.fee-inp { width: 120px; height: 36px; text-align: right; font-weight: 700; border-radius: 9px; border: 1px solid var(--line2); background: var(--bg); padding: 0 10px; font-size: 15px; }
+.fee-inp:focus { outline: none; border-color: var(--brand); }
+.link-btn { display: block; margin: 14px auto 0; color: var(--brand2); font-weight: 600; font-size: 14px; }

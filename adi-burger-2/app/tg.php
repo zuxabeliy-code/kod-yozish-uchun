@@ -16,6 +16,7 @@ function tg_api(string $method, array $params = [], int $timeout = 8): ?array
     }
     if (cfg('test.tg_dry')) {
         $GLOBALS['TG_SENT'][] = [$method, $params];
+        @file_put_contents(ROOT . '/storage/cache/tg_dry.log', json_encode([$method, $params], JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX);
         return ['ok' => true, 'result' => $method === 'getMe' ? ['id' => 1, 'username' => 'test_bot'] : ['message_id' => count($GLOBALS['TG_SENT'])]];
     }
     $ch = curl_init('https://api.telegram.org/bot' . $token . '/' . $method);
@@ -79,7 +80,7 @@ function tg_webhook_set(): array
     if (!str_starts_with($url, 'https://')) {
         return ['ok' => false, 'error' => 'Sayt manzili https:// bilan boshlanishi kerak (Telegram faqat HTTPS bilan ishlaydi).'];
     }
-    $r = tg_api('setWebhook', ['url' => $url, 'secret_token' => $secret, 'allowed_updates' => ['message', 'callback_query'], 'drop_pending_updates' => false, 'max_connections' => 20]);
+    $r = tg_api('setWebhook', ['url' => $url, 'secret_token' => $secret, 'allowed_updates' => ['message', 'callback_query'], 'drop_pending_updates' => false, 'max_connections' => 4]);
     if (!$r) {
         return ['ok' => false, 'error' => $GLOBALS['TG_ERR'] ?? 'Noma\'lum xato'];
     }
@@ -171,7 +172,7 @@ function tg_notify_order(array $o): void
     }
     $head = match ($o['status']) {
         'new' => "✅ Buyurtmangiz qabul qilindi va kassaga yuborildi.",
-        'accepted' => "👨‍🍳 Buyurtmangiz tayyorlanmoqda.",
+        'accepted' => "👨‍🍳 Buyurtmangiz tayyorlanmoqda." . (setting_int('prep_minutes') > 0 ? "\n⏱ Taxminan " . setting_int('prep_minutes') . " daqiqada tayyor bo'ladi." : ''),
         'ready' => $o['type'] === 'delivery' ? '🚚 Buyurtmangiz tayyor, yo\'lga chiqadi.' : '🛍 Buyurtmangiz tayyor! Olib ketishingiz mumkin.',
         'done' => '🎉 Buyurtma yakunlandi. Yoqimli ishtaha!',
         'rejected' => '❌ Afsuski, buyurtmangiz rad etildi.',

@@ -92,6 +92,33 @@ function handle_action(string $a, array $me): void
             flash('Stol saqlandi');
             redirect('tables');
 
+        case 'table.delete':
+            $t = row('SELECT * FROM dining_tables WHERE id = ?', [post_int('id')]);
+            if (!$t) {
+                throw new UserError('Stol topilmadi.');
+            }
+            flash(table_remove($t));
+            catalog_bump();
+            audit('table.delete', 'table', $t['id'], ['name' => $t['name']], $emp);
+            redirect('tables');
+
+        case 'table.delete_all':
+            $n = 0;
+            $hidden = 0;
+            $skipped = 0;
+            foreach (rows('SELECT * FROM dining_tables') as $t) {
+                try {
+                    $msg = table_remove($t);
+                    str_contains($msg, 'yashirildi') ? $hidden++ : $n++;
+                } catch (UserError $e) {
+                    $skipped++;
+                }
+            }
+            catalog_bump();
+            audit('table.delete_all', 'table', '', ['deleted' => $n, 'hidden' => $hidden], $emp);
+            flash("$n ta stol o'chirildi" . ($hidden ? ", $hidden tasi tarixda ishlatilgani uchun yashirildi" : '') . ($skipped ? ", $skipped tasida ochiq hisob bor (o'tkazib yuborildi)" : '') . '.');
+            redirect('tables');
+
         case 'table.bulk':
             $n = max(1, min(100, post_int('count')));
             $start = (int)val('SELECT COUNT(*) FROM dining_tables') + 1;
@@ -108,6 +135,9 @@ function handle_action(string $a, array $me): void
             $name = str_limit(post('name'), 100);
             $role = post('role') === 'admin' ? 'admin' : 'cashier';
             $pin = post('pin');
+            $login = post('username');
+            $pass = (string)($_POST['password'] ?? '');
+            $old = $id ? row('SELECT * FROM employees WHERE id = ?', [$id]) : null;
             if ($name === '') {
                 throw new UserError('Ismini kiriting.');
             }
@@ -124,7 +154,26 @@ function handle_action(string $a, array $me): void
             } elseif (!$id) {
                 throw new UserError('Yangi xodim uchun PIN kiriting.');
             }
-            tx(function () use (&$id, $name, $role, $pin) {
+            // Login va parol: kassir ham, administrator ham kassaga login bilan kira oladi. Admin panelga faqat administrator.
+            if ($login !== '') {
+                if (!preg_match('~^[a-zA-Z0-9_.-]{3,50}$~', $login)) {
+                    throw new UserError('Login 3–50 ta lotin harf, raqam yoki . _ - belgilaridan iborat bo\'lsin.');
+                }
+                if (val('SELECT id FROM employees WHERE login = ? AND id <> ?', [$login, $id]) || val('SELECT id FROM users WHERE username = ? AND employee_id <> ?', [$login, $id])) {
+                    throw new UserError('Bu login band. Boshqasini tanlang.');
+                }
+                $minLen = $role === 'admin' ? 8 : 6;
+                $hasPw = $old && $old['pw_hash'];
+                if ($pass === '' && !$hasPw) {
+                    throw new UserError('Login uchun parol ham kiriting.');
+                }
+                if ($pass !== '' && mb_strlen($pass) < $minLen) {
+                    throw new UserError("Parol kamida $minLen belgi bo'lsin.");
+                }
+            } elseif ($role === 'admin' && !val('SELECT id FROM users WHERE employee_id = ?', [$id])) {
+                throw new UserError('Administrator uchun login va parol kiriting (admin panelga kirish uchun).');
+            }
+            tx(function () use (&$id, $name, $role, $pin, $login, $pass) {
                 if ($id) {
                     q('UPDATE employees SET name = ?, role = ?, is_active = ? WHERE id = ?', [$name, $role, post_int('is_active') ? 1 : 0, $id]);
                 } else {
@@ -132,43 +181,36 @@ function handle_action(string $a, array $me): void
                     $id = (int)db()->lastInsertId();
                 }
                 if ($pin !== '') {
-                    [$s, $h] = pin_make($pin);
-                    q('UPDATE employees SET pin_salt = ?, pin_hash = ? WHERE id = ?', [$s, $h, $id]);
+                    [$s1, $h1] = pin_make($pin);
+                    q('UPDATE employees SET pin_salt = ?, pin_hash = ? WHERE id = ?', [$s1, $h1, $id]);
                 }
-                $user = post('username');
-                $pass = (string)($_POST['password'] ?? '');
-                if ($role === 'admin' && $user !== '') {
-                    if (!preg_match('~^[a-zA-Z0-9_.-]{3,50}$~', $user)) {
-                        throw new UserError('Login 3–50 lotin harf/raqam bo\'lsin.');
+                if ($login !== '') {
+                    q('UPDATE employees SET login = ? WHERE id = ?', [$login, $id]);
+                    if ($pass !== '') {
+                        [$s2, $h2] = pin_make($pass); // kassa parolni offline ham tekshira olishi uchun PBKDF2
+                        q('UPDATE employees SET pw_salt = ?, pw_hash = ? WHERE id = ?', [$s2, $h2, $id]);
                     }
-                    $ex = row('SELECT * FROM users WHERE employee_id = ?', [$id]);
-                    if (val('SELECT id FROM users WHERE username = ? AND employee_id <> ?', [$user, $id])) {
-                        throw new UserError('Bu login band.');
-                    }
-                    if ($ex) {
-                        q('UPDATE users SET username = ? WHERE id = ?', [$user, $ex['id']]);
+                } else {
+                    q('UPDATE employees SET login = NULL, pw_salt = NULL, pw_hash = NULL WHERE id = ?', [$id]);
+                }
+                $u = row('SELECT * FROM users WHERE employee_id = ?', [$id]);
+                if ($role === 'admin') {
+                    $uname = $login !== '' ? $login : ($u['username'] ?? '');
+                    if ($u) {
+                        q('UPDATE users SET username = ?, is_active = 1 WHERE id = ?', [$uname, $u['id']]);
                         if ($pass !== '') {
-                            if (mb_strlen($pass) < 8) {
-                                throw new UserError('Parol kamida 8 belgi.');
-                            }
-                            q('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash($pass, PASSWORD_DEFAULT), $ex['id']]);
+                            q('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash($pass, PASSWORD_DEFAULT), $u['id']]);
                         }
                     } else {
-                        if (mb_strlen($pass) < 8) {
-                            throw new UserError('Admin panel uchun parol kamida 8 belgi.');
-                        }
-                        q('INSERT INTO users (employee_id, username, password_hash) VALUES (?, ?, ?)', [$id, $user, password_hash($pass, PASSWORD_DEFAULT)]);
+                        q('INSERT INTO users (employee_id, username, password_hash) VALUES (?, ?, ?)', [$id, $uname, password_hash($pass, PASSWORD_DEFAULT)]);
                     }
-                }
-                if ($role !== 'admin') {
-                    q('UPDATE users SET is_active = 0 WHERE employee_id = ?', [$id]);
-                } else {
-                    q('UPDATE users SET is_active = 1 WHERE employee_id = ?', [$id]);
+                } elseif ($u) {
+                    q('UPDATE users SET is_active = 0 WHERE id = ?', [$u['id']]);
                 }
             });
             catalog_bump();
-            audit('employee.save', 'employee', $id, ['name' => $name, 'role' => $role, 'pin_changed' => $pin !== ''], $emp);
-            flash('Xodim saqlandi. Kassa yangi PIN ni keyingi sinxronlashda oladi.');
+            audit('employee.save', 'employee', $id, ['name' => $name, 'role' => $role, 'pin_changed' => $pin !== '', 'login' => $login], $emp);
+            flash('Xodim saqlandi. Kassa yangi ma\'lumotni bir necha soniyada oladi.');
             redirect('employees');
 
         // ---------- Telegram buyurtmalari ----------
@@ -234,6 +276,11 @@ function handle_action(string $a, array $me): void
                 setting_set($k, post_int($k) ? '1' : '0');
             }
             setting_set('contact_text', str_limit(post('contact_text'), 1000));
+            setting_set('prep_minutes', (string)max(0, min(240, post_int('prep_minutes'))));
+            setting_set('cancel_minutes', (string)max(0, min(30, post_int('cancel_minutes', 3))));
+            foreach (['bot_note_delivery', 'bot_note_pickup', 'bot_note_pay'] as $nk) {
+                setting_set($nk, str_limit(post($nk), 1000));
+            }
             setting_set('delivery_fee', (string)max(0, post_int('delivery_fee')));
             setting_set('min_order', (string)max(0, post_int('min_order')));
             foreach (['work_open', 'work_close'] as $k) {
@@ -270,19 +317,57 @@ function handle_action(string $a, array $me): void
             redirect('telegram');
 
         case 'settings.pos':
-            foreach (['brand_name' => 60, 'brand_phone' => 40, 'brand_address' => 120, 'receipt_footer' => 200] as $k => $len) {
+            foreach (['brand_name' => 60, 'brand_phone' => 40, 'brand_address' => 120] as $k => $len) {
                 setting_set($k, str_limit(post($k), $len));
             }
-            setting_set('paper_width', post('paper_width') === '58' ? '58' : '80');
             foreach (['kitchen_auto', 'customer_auto'] as $k) {
                 setting_set($k, post_int($k) ? '1' : '0');
             }
-            setting_set('kitchen_copies', (string)max(1, min(3, post_int('kitchen_copies'))));
-            setting_set('customer_copies', (string)max(1, min(3, post_int('customer_copies'))));
             catalog_bump();
             audit('settings.pos', 'settings', '', [], $emp);
             flash('POS sozlamalari saqlandi. Kassa ularni bir necha soniyada oladi.');
             redirect('pos');
+
+        // ---------- Chek dizayni ----------
+        case 'receipt.save':
+            $json = json_decode((string)($_POST['design'] ?? ''), true);
+            if (!is_array($json)) {
+                throw new UserError("Dizayn ma'lumoti noto'g'ri. Sahifani yangilab qayta urinib ko'ring.");
+            }
+            $d = rc_sanitize($json);
+            setting_set('receipt_design', json_encode($d, JSON_UNESCAPED_UNICODE));
+            setting_set('paper_width', (string)$d['paper']);
+            rc_logo_refresh();
+            catalog_bump();
+            audit('receipt.save', 'settings', '', [], $emp);
+            flash('Chek dizayni saqlandi. Kassa yangi chekni bir necha soniyada oladi.');
+            redirect('receipt');
+
+        case 'receipt.reset':
+            setting_set('receipt_design', '');
+            catalog_bump();
+            audit('receipt.reset', 'settings', '', [], $emp);
+            flash('Chek dizayni standart holatga qaytarildi.');
+            redirect('receipt');
+
+        case 'receipt.logo':
+            rc_save_posted_design();
+            rc_logo_save_upload($_FILES['logo'] ?? []);
+            catalog_bump();
+            audit('receipt.logo', 'settings', '', [], $emp);
+            flash("Logo yuklandi. Quyida chekda qanday ko'rinishini ko'ring, kerak bo'lsa kattaligi va qoraligini sozlang.");
+            redirect('receipt');
+
+        case 'receipt.logo_delete':
+            rc_save_posted_design();
+            foreach (glob(ROOT . '/uploads/logo/logo-*.png') ?: [] as $f) {
+                @unlink($f);
+            }
+            setting_set('receipt_logo_src', '');
+            setting_set('receipt_logo', '');
+            catalog_bump();
+            flash('Logo olib tashlandi.');
+            redirect('receipt');
 
         case 'device.toggle':
             q('UPDATE devices SET is_active = 1 - is_active WHERE id = ?', [post_int('id')]);
@@ -431,4 +516,30 @@ function handle_download(string $what, array $me): void
         return;
     }
     throw new UserError('Noma\'lum fayl');
+}
+
+
+/** Logo yuklash/olib tashlash sahifani qayta yuklaydi: saqlanmagan o'zgarishlar yo'qolmasligi uchun joriy dizayn ham saqlanadi. */
+function rc_save_posted_design(): void
+{
+    $json = json_decode((string)($_POST['design'] ?? ''), true);
+    if (is_array($json)) {
+        $d = rc_sanitize($json);
+        setting_set('receipt_design', json_encode($d, JSON_UNESCAPED_UNICODE));
+        setting_set('paper_width', (string)$d['paper']);
+    }
+}
+
+/** Stolni o'chiradi. Tarixda ishlatilgan bo'lsa (buyurtmalar bog'langan) — yashiradi, hisobotlar saqlanadi. */
+function table_remove(array $t): string
+{
+    if ((int)val("SELECT COUNT(*) FROM orders WHERE table_id = ? AND status = 'accepted'", [$t['id']]) > 0) {
+        throw new UserError("«{$t['name']}» da ochiq hisob bor. Avval kassada yoping.");
+    }
+    if ((int)val('SELECT COUNT(*) FROM orders WHERE table_id = ?', [$t['id']]) > 0) {
+        q('UPDATE dining_tables SET is_active = 0 WHERE id = ?', [$t['id']]);
+        return "«{$t['name']}» tarixda ishlatilgan, shuning uchun o'chirilmadi — yashirildi (kassada ko'rinmaydi, hisobotlar saqlanadi).";
+    }
+    q('DELETE FROM dining_tables WHERE id = ?', [$t['id']]);
+    return "«{$t['name']}» o'chirildi.";
 }

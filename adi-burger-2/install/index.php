@@ -21,7 +21,7 @@ if (empty($_SESSION['csrf'])) {
 function inst_checks(): array
 {
     $c = [];
-    $c[] = ['PHP versiyasi ' . PHP_VERSION . ' (8.1+ kerak, 8.2 tavsiya)', version_compare(PHP_VERSION, '8.1.0', '>='), true];
+    $c[] = ['PHP versiyasi ' . PHP_VERSION . ' (8.0+ kerak, 8.2 tavsiya)', version_compare(PHP_VERSION, '8.0.0', '>='), true];
     foreach (['pdo_mysql' => 'MySQL bilan ishlash', 'mbstring' => 'O\'zbekcha matnlar', 'curl' => 'Telegram va Hamyon', 'openssl' => 'Maxfiy sozlamalarni shifrlash', 'json' => 'API'] as $ext => $why) {
         $c[] = ["PHP kengaytmasi: $ext ($why)", extension_loaded($ext), true];
     }
@@ -127,7 +127,8 @@ if (!$installed && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             inst_seed($pdo);
             if ((int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === 0) {
                 [$salt, $hash] = pin_make($f['pin']);
-                $pdo->prepare("INSERT INTO employees (name, role, pin_salt, pin_hash) VALUES (?, 'admin', ?, ?)")->execute([mb_substr($f['admin_name'], 0, 100), $salt, $hash]);
+                [$ps, $ph] = pin_make($f['password']); // kassaga login/parol bilan kirish (offline tekshirish uchun PBKDF2)
+                $pdo->prepare("INSERT INTO employees (name, role, pin_salt, pin_hash, login, pw_salt, pw_hash) VALUES (?, 'admin', ?, ?, ?, ?, ?)")->execute([mb_substr($f['admin_name'], 0, 100), $salt, $hash, $f['username'], $ps, $ph]);
                 $empId = (int)$pdo->lastInsertId();
                 $pdo->prepare('INSERT INTO users (employee_id, username, password_hash) VALUES (?, ?, ?)')->execute([$empId, $f['username'], password_hash($f['password'], PASSWORD_DEFAULT)]);
                 if ($f['cashier_pin'] !== '') {

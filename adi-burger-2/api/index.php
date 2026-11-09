@@ -32,6 +32,7 @@ try {
         json_out(['ok' => false, 'error' => 'Qurilma ulanmagan yoki o\'chirilgan. Administrator logini bilan qayta ulang.', 'code' => 'DEVICE_AUTH'], 401);
     }
 
+    schema_autoupdate();
     switch ($route) {
         case 'catalog':
             json_out(['ok' => true] + sync_catalog());
