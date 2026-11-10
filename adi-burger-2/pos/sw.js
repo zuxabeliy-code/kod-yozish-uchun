@@ -1,9 +1,9 @@
 // ADI BURGER POS Service Worker: kassa interfeysi internet bo'lmasa ham ochiladi.
-const VERSION = 'adi-pos-2.1.0';
+const VERSION = 'adi-pos-2.2.0';
 const SHELL = [
-  './', './index.html', './manifest.json', './css/pos.css?v=2.1.0', './js/app.js?v=2.1.0',
-  './js/db.js', './js/util.js', './js/sync.js', './js/agent.js', './js/model.js', './js/receipt.js',
-  './icons/icon-192.png', './icons/favicon.png',
+  './', './index.html', './manifest.json', './css/pos.css?v=2.2.0', './js/app.js?v=2.2.0',
+  './js/db.js', './js/util.js', './js/sync.js', './js/agent.js', './js/model.js', './js/receipt.js', './js/qr.js',
+  './icons/icon-192.png', './icons/favicon.png', './icons/logo.png',
 ];
 
 self.addEventListener('install', (e) => {
@@ -27,11 +27,14 @@ self.addEventListener('fetch', (e) => {
     }));
     return;
   }
-  // Kassa fayllari: tarmoq birinchi (yangilanish tez yetib borsin), bo'lmasa kesh
+  // Kassa fayllari: darhol keshdan (kassa bir zumda ochiladi), yangisi fonda yuklab qo'yiladi.
+  // Yangi versiya chiqqanda sw.js o'zgaradi -> yangi kesh to'liq yuklanadi -> kassada "Yangilash" tugmasi chiqadi.
   if (url.pathname.includes('/pos/')) {
-    e.respondWith(fetch(e.request).then(r => {
-      if (r.ok) { const cp = r.clone(); caches.open(VERSION).then(c => c.put(e.request, cp)); }
-      return r;
-    }).catch(async () => (await caches.match(e.request, { ignoreSearch: false })) || (await caches.match(e.request, { ignoreSearch: true })) || caches.match('./index.html')));
+    e.respondWith(caches.open(VERSION).then(async c => {
+      const hit = (await c.match(e.request)) || (await c.match(e.request, { ignoreSearch: true })) || (e.request.mode === 'navigate' ? await c.match('./index.html') : null);
+      const net = fetch(e.request).then(r => { if (r.ok) c.put(e.request, r.clone()); return r; });
+      if (hit) { net.catch(() => {}); return hit; }
+      return net.catch(() => new Response('', { status: 504 }));
+    }));
   }
 });

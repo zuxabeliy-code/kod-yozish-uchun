@@ -8,6 +8,7 @@ const ADMIN_MENU = [
     'products' => ['🍔', 'Mahsulotlar'],
     'categories' => ['🗂', 'Kategoriyalar'],
     'tables' => ['🍽', 'Stollar'],
+    'qrmenu' => ['🔳', 'QR menyu (stollar uchun)'],
     'employees' => ['👤', 'Kassir va administrator'],
     'shifts' => ['🕘', 'Smenalar'],
     'reports' => ['📈', 'Savdo hisobotlari'],
@@ -15,7 +16,8 @@ const ADMIN_MENU = [
     'telegram' => ['✈️', 'Telegram bot'],
     'pos' => ['🖨', 'POS va printer'],
     'receipt' => ['🧾', 'Chek dizayni'],
-    'diagnostics' => ['🩺', 'Diagnostika va ta\'mirlash'],
+    'diagnostics' => ['🛠', 'Texnik bo\'lim (tekshirish va tuzatish)'],
+    'mcp' => ['🤖', 'Claude (MCP) ulanishi'],
     'backup' => ['💾', 'Zaxira'],
 ];
 

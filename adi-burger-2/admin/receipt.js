@@ -19,13 +19,13 @@ const ITEMS = [
 ];
 const now = new Date().toISOString();
 const SAMPLES = {
-  table: { type: 'table', table_id: 1, bill_no: 1, number: '12', comment: 'Tezroq iltimos', customer_name: '', phone: '', address: '', delivery_fee: 0, closed_at: now, payments: [{ method: 'cash', amount: 115000, received: 120000, change: 5000 }] },
-  takeaway: { type: 'takeaway', number: '13', comment: '', customer_name: '', phone: '', address: '', delivery_fee: 0, closed_at: now, payments: [{ method: 'terminal', amount: 115000 }] },
-  delivery: { type: 'delivery', number: '14', comment: 'Qo\'ng\'iroq qiling', customer_name: 'Ali', phone: '+998 90 123 45 67', address: 'Andijon sh., Navoiy ko\'chasi 12, 5-uy', delivery_fee: 10000, closed_at: now, payments: [{ method: 'cash', amount: 125000, received: 130000, change: 5000 }] },
+  table: { uuid: '00000000-0000-4000-8000-000000000012', type: 'table', table_id: 1, bill_no: 1, number: '12', comment: 'Tezroq iltimos', customer_name: '', phone: '', address: '', delivery_fee: 0, closed_at: now, payments: [{ method: 'cash', amount: 115000, received: 120000, change: 5000 }] },
+  takeaway: { uuid: '00000000-0000-4000-8000-000000000013', type: 'takeaway', number: '13', comment: '', customer_name: '', phone: '', address: '', delivery_fee: 0, closed_at: now, payments: [{ method: 'terminal', amount: 115000 }] },
+  delivery: { uuid: '00000000-0000-4000-8000-000000000014', type: 'delivery', number: '14', comment: 'Qo\'ng\'iroq qiling', customer_name: 'Ali', phone: '+998 90 123 45 67', address: 'Andijon sh., Navoiy ko\'chasi 12, 5-uy', delivery_fee: 10000, closed_at: now, payments: [{ method: 'cash', amount: 125000, received: 130000, change: 5000 }] },
 };
 
 function ctx() {
-  return { brand: D.brand.name, address: D.brand.address, phone: D.brand.phone, tables: [{ id: 1, name: 'Stol 1' }], cashier: 'Kassir', design, logo };
+  return { brand: D.brand.name, address: D.brand.address, phone: D.brand.phone, tables: [{ id: 1, name: 'Stol 1' }], cashier: 'Kassir', design, logo, base: new URL('../', location.href).href };
 }
 
 // ---------- Jonli ko'rinish ----------
@@ -69,6 +69,7 @@ function blockRow(which, b, i, n) {
   const removable = ['text', 'separator', 'feed'].includes(b.kind);
   let extra = '';
   if (b.kind === 'text') extra = `<input class="txt" data-f="text" value="${esc(b.text)}" placeholder="Matn yozing (bir nechta qator uchun ⏎ bilan ajrating)" maxlength="200">`;
+  if (b.kind === 'qr') extra = `<input class="txt" data-f="text" value="${esc(b.text)}" placeholder="QR ostidagi yozuv" maxlength="200">`;
   if (b.kind === 'separator') extra = `<select data-f="ch">${['-', '=', '*', '_', '.'].map(c => `<option ${b.ch === c ? 'selected' : ''}>${c}</option>`).join('')}</select>`;
   if (b.kind === 'feed') extra = `<input type="number" data-f="n" min="1" max="5" value="${b.n || 1}" style="width:70px"> qator`;
   if (b.kind === 'customer') extra = ['name:Ism', 'phone:Telefon', 'address:Manzil'].map(x => { const [f, l] = x.split(':'); return `<label class="check"><input type="checkbox" data-o="${f}" ${b.o && b.o[f] !== false ? 'checked' : ''}> ${l}</label>`; }).join('');
@@ -99,7 +100,7 @@ function renderBlocks(which) {
     add.addEventListener('change', () => {
       if (!add.value) return;
       const kind = add.value; add.value = '';
-      list.push({ id: 'x' + Math.random().toString(36).slice(2, 8), kind, on: true, align: ['shop', 'shop_info', 'text'].includes(kind) ? 'c' : 'l', size: 1, bold: false, text: kind === 'text' ? 'Yangi matn' : '', ch: '-', n: 1, o: { price: which === 'customer', name: true, phone: true, address: true } });
+      list.push({ id: 'x' + Math.random().toString(36).slice(2, 8), kind, on: true, align: ['shop', 'shop_info', 'text', 'qr'].includes(kind) ? 'c' : 'l', size: 1, bold: false, text: kind === 'text' ? 'Yangi matn' : kind === 'qr' ? 'Onlayn chek: QR-kodni skanerlang' : '', ch: '-', n: 1, o: { price: which === 'customer', name: true, phone: true, address: true } });
       renderBlocks(which); renderPreview();
     });
   }

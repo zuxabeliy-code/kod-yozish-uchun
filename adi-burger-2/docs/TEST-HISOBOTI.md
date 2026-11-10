@@ -1,6 +1,6 @@
 # ADI BURGER 2.0 — Test hisoboti
 
-Sana: 2026-11-09 · Versiya: 2.1.0
+Sana: 2026-11-09 · Versiya: 2.2.0
 
 **Sinov muhiti:**
 - Linux, PHP 8.3, MariaDB 10.11.
@@ -133,3 +133,21 @@ Tuzatishlardan keyin: server integratsiya testlari **43/43**, printer xizmati un
 - **Bitta kassa uchun mo'ljallangan.** Buyurtma raqamlari har kuni 1 dan boshlanadi; ikki kassada ular takrorlanishi mumkin.
 - **.htaccess ishlamaydigan (nginx) hostingda** maxfiy papkalarni hosting sozlamasida yopish kerak. Diagnostika buni avtomatik aniqlaydi.
 - **Z-hisobot ichki boshqaruv hisoboti**, rasmiy fiskal hisobot emas.
+
+## 4. 2.2.0 yangilanishi (2026-11-10)
+
+Yangi: Zim Zim uslubidagi yorug' kassa (6 stol, Hisob-1..4, to'liq ekranli to'lov, yetkazish kartalari va saqlangan manzillar), mijoz chekida QR-kod va onlayn chek (`/r/`), stollar uchun QR menyu sayti (`/menu/`), Claude (MCP) ulanishi (`/mcp/`), Texnik bo'limda «Hammasini tuzatish», kassa tez ochilishi (kesh-birinchi), logoni 7 marta bosib admin panelni ochish.
+
+| Sinov | Natija |
+|-------|--------|
+| Kassa (haqiqiy Chromium, 1024×768, soxta LAN printer): stol, qo'shimcha taom faqat o'zi chiqishi, bekor qilish, Hisob-2, hisob cheki, naqd va qaytim, QR-kodli mijoz cheki, olib ketish, yetkazish (ixtiyoriy telefon/manzil, saqlangan manzil), offline savdo va qayta sinxronlash, smena yopish | 36 tadan 36 o'tdi |
+| Server integratsiya testlari (`tests/integration_test.php`) | 73 tadan 73 o'tdi |
+| MCP: kalitsiz rad etish, `config/` va `..` yopiqligi, PHP sintaksis xatoli faylni yozmaslik, zaxira, faqat o'qiladigan SQL, maxfiy qiymatlarni yashirish | qo'lda so'rovlar bilan tekshirildi |
+| Onlayn chek va QR menyu (telefon o'lchami) | ochiladi, noto'g'ri QR — 404 |
+
+Bu yerda tekshirilmagan (monoblokda tekshiring):
+
+- **QR-kod haqiqiy qog'ozda o'qilishi.** QR rasm sifatida yuboriladi (logo kabi), soxta printerda bayt darajasida tekshirildi. Haqiqiy Xprinter'da telefon bilan skanerlab ko'ring; o'qilmasa Chek dizayni → QR-kod → «Katta» ni tanlang.
+- **Kassa ochilish tezligi myxvest.ru da.** Kesh-birinchi rejim ikkinchi ochilishdan boshlab ishlaydi (birinchi ochilishda fayllar yuklanadi).
+- **Claude ilovasidan MCP ga ulanish.** Server tomoni tekshirildi; Claude'da konnektor qo'shishni o'zingiz bajarasiz. Sayt HTTPS bo'lishi kerak.
+- **Haqiqiy Telegram ichida WebApp ko'rinishi** (yangi rang va logo).

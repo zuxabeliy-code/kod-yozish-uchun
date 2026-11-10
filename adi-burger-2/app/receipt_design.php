@@ -25,6 +25,7 @@ const RC_KINDS = [
     'delivery_fee' => ['Yetkazish narxi', 'c'],
     'total' => ['Jami summa', 'c'],
     'payments' => ["To'lov turi va qaytim", 'c'],
+    'qr' => ['QR-kod (onlayn chek)', 'c'],
     'separator' => ['Chiziq', 'kc'],
     'feed' => ["Bo'sh qatorlar", 'kc'],
 ];
@@ -39,19 +40,19 @@ function rc_default_design(): array
     $cust = ['name' => true, 'phone' => true, 'address' => true];
     $footer = trim(setting('receipt_footer')) ?: 'Xaridingiz uchun rahmat!';
     return [
-        'v' => 1,
+        'v' => 2,
         'paper' => setting('paper_width') === '58' ? 58 : 80,
         'font' => 'a',
         'line_pct' => 100,
         'margin_mm' => 0,
         'bold_all' => false,
         'logo' => ['pct' => 60, 'dark' => 60],
-        // Oshxona cheki: faqat taom nomi va soni. Qolganlarini kerak bo'lsa yoqing.
+        // Oshxona cheki: katta buyurtma raqami, taom nomi va soni. Qolganlarini kerak bo'lsa yoqing.
         'kitchen' => ['copies' => 1, 'blocks' => [
             rc_block('k_logo', 'logo', false, 'c'),
             rc_block('k_title', 'text', false, 'c', 2, true, ['text' => 'OSHXONA']),
             rc_block('k_type', 'type_line', false, 'c', 2, true),
-            rc_block('k_no', 'order_no', false, 'c', 1, true),
+            rc_block('k_no', 'order_no', true, 'c', 2, true),
             rc_block('k_time', 'datetime', false),
             rc_block('k_cashier', 'cashier', false),
             rc_block('k_sep1', 'separator', false, 'l', 1, false, ['ch' => '=']),
@@ -79,6 +80,7 @@ function rc_default_design(): array
             rc_block('c_total', 'total', true, 'l', 2, true),
             rc_block('c_pay', 'payments', true),
             rc_block('c_sep4', 'separator', true),
+            rc_block('c_qr', 'qr', true, 'c', 1, false, ['text' => 'Onlayn chek: QR-kodni skanerlang']),
             rc_block('c_thanks', 'text', true, 'c', 1, true, ['text' => $footer]),
         ]],
     ];
@@ -90,7 +92,7 @@ function rc_sanitize(array $in): array
     $def = rc_default_design();
     $clean = static fn($s, int $len) => mb_substr(trim(preg_replace('~[\x00-\x08\x0B-\x1F\x7F]~u', '', (string)$s) ?? ''), 0, $len);
     $out = [
-        'v' => 1,
+        'v' => 2,
         'paper' => (int)($in['paper'] ?? $def['paper']) === 58 ? 58 : 80,
         'font' => ($in['font'] ?? 'a') === 'b' ? 'b' : 'a',
         'line_pct' => max(50, min(200, (int)($in['line_pct'] ?? 100))),
@@ -117,7 +119,7 @@ function rc_sanitize(array $in): array
                 'id' => substr($id, 0, 24), 'kind' => $kind, 'on' => !empty($b['on']),
                 'align' => in_array($b['align'] ?? 'l', ['l', 'c', 'r'], true) ? $b['align'] : 'l',
                 'size' => (int)($b['size'] ?? 1) === 2 ? 2 : 1, 'bold' => !empty($b['bold']),
-                'text' => $kind === 'text' ? $clean($b['text'] ?? '', 200) : '',
+                'text' => in_array($kind, ['text', 'qr'], true) ? $clean($b['text'] ?? '', 200) : '',
                 'ch' => in_array($b['ch'] ?? '-', ['-', '=', '*', '_', '.'], true) ? $b['ch'] : '-',
                 'n' => max(1, min(5, (int)($b['n'] ?? 1))),
                 'o' => ['price' => !empty($o['price']), 'name' => !array_key_exists('name', $o) || !empty($o['name']), 'phone' => !array_key_exists('phone', $o) || !empty($o['phone']), 'address' => !array_key_exists('address', $o) || !empty($o['address'])],
@@ -132,7 +134,19 @@ function rc_sanitize(array $in): array
 function rc_design(): array
 {
     $raw = json_decode(setting('receipt_design'), true);
-    return is_array($raw) ? rc_sanitize($raw) : rc_default_design();
+    if (!is_array($raw)) {
+        return rc_default_design();
+    }
+    $d = rc_sanitize($raw);
+    // v1 dan qolgan dizayn: mijoz chekiga QR-kod bloki qo'shiladi (keyin dizaynerda o'chirish mumkin)
+    if ((int)($raw['v'] ?? 1) < 2 && !in_array('qr', array_column($d['customer']['blocks'], 'kind'), true)) {
+        $qr = rc_block('c_qr', 'qr', true, 'c', 1, false, ['text' => 'Onlayn chek: QR-kodni skanerlang']);
+        $n = count($d['customer']['blocks']);
+        $last = $n ? $d['customer']['blocks'][$n - 1] : null;
+        $pos = ($last && $last['kind'] === 'text') ? $n - 1 : $n;
+        array_splice($d['customer']['blocks'], $pos, 0, [$qr]);
+    }
+    return $d;
 }
 
 function rc_logo(): ?array

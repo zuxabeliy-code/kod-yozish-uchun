@@ -357,7 +357,7 @@ setting_set('delivery_fee', '0');
 
 // Chek dizayni
 $d = rc_default_design();
-check('Standart oshxona cheki: faqat taomlar (+ izoh), mijoz telefoni/raqami yo\'q', array_values(array_map(fn($b) => $b['kind'], array_filter($d['kitchen']['blocks'], fn($b) => $b['on']))) === ['items', 'comment'], 'items, comment', array_map(fn($b) => $b['kind'], array_filter($d['kitchen']['blocks'], fn($b) => $b['on'])));
+check('Standart oshxona cheki: buyurtma raqami, taomlar, izoh (mijoz telefoni yo\'q)', array_values(array_map(fn($b) => $b['kind'], array_filter($d['kitchen']['blocks'], fn($b) => $b['on']))) === ['order_no', 'items', 'comment'], 'order_no, items, comment', array_map(fn($b) => $b['kind'], array_filter($d['kitchen']['blocks'], fn($b) => $b['on'])));
 $custom = $d;
 $custom['kitchen']['blocks'][] = rc_block('x1', 'text', true, 'c', 2, true, ['text' => 'TEZ!']);
 $custom['customer']['copies'] = 2;

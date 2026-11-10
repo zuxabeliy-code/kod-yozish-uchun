@@ -228,26 +228,29 @@ function page_tables(array $me): void
     $list = rows("SELECT t.*, (SELECT COUNT(*) FROM orders o WHERE o.table_id = t.id AND o.status = 'accepted') AS open_n,
                   (SELECT COUNT(*) FROM orders o WHERE o.table_id = t.id) AS used_n FROM dining_tables t ORDER BY t.sort, t.id");
     $edit = isset($_GET['edit']) ? row('SELECT * FROM dining_tables WHERE id = ?', [(int)$_GET['edit']]) : null;
-    $e = $edit ?? ['id' => 0, 'name' => 'Stol ' . (count($list) + 1), 'sort' => count($list) + 1, 'is_active' => 1];
+    $e = $edit ?? ['id' => 0, 'name' => 'Stol ' . (count($list) + 1), 'zone' => '', 'sort' => count($list) + 1, 'is_active' => 1];
+    $zones = array_values(array_unique(array_filter(array_map(fn($t) => (string)($t['zone'] ?? ''), $list))));
+    $dl = '<datalist id="zones">' . implode('', array_map(fn($z) => '<option value="' . e($z) . '">', $zones)) . '</datalist>';
     $h = '<div class="grid2 wide-left"><div class="card"><div class="row-between"><h3>Stollar (' . count($list) . ')</h3>'
         . ($list ? action_btn('table.delete_all', [], '🗑 Hammasini o\'chirish', 'btn sm danger', "Barcha stollar o'chiriladi (tarixda ishlatilganlari yashiriladi, ochiq hisobi borlari qoladi). Davom etasizmi?") : '') . '</div>'
-        . '<div class="tw"><table class="t"><tr><th>Nomi</th><th>Tartib</th><th>Holat</th><th>Hozir</th><th></th></tr>';
+        . '<div class="tw"><table class="t"><tr><th>Nomi</th><th>Zal</th><th>Tartib</th><th>Holat</th><th>Hozir</th><th></th></tr>';
     foreach ($list as $t) {
         $note = $t['used_n'] > 0 ? ' (tarixda ishlatilgan — yashiriladi)' : '';
-        $h .= '<tr' . ($t['is_active'] ? '' : ' class="dim"') . '><td><b>' . e($t['name']) . '</b></td><td>' . (int)$t['sort'] . '</td><td>'
+        $h .= '<tr' . ($t['is_active'] ? '' : ' class="dim"') . '><td><b>' . e($t['name']) . '</b></td><td>' . (($t['zone'] ?? '') !== '' ? e($t['zone']) : '<span class="muted">—</span>') . '</td><td>' . (int)$t['sort'] . '</td><td>'
             . ($t['is_active'] ? '<span class="badge green">Faol</span>' : '<span class="badge gray">Yashirin</span>') . '</td><td>'
             . ($t['open_n'] ? '<span class="badge yellow">' . (int)$t['open_n'] . ' ta ochiq hisob</span>' : '<span class="muted small">Bo\'sh</span>') . '</td><td class="r nowrap">'
             . '<a class="btn sm" href="' . url('tables', ['edit' => $t['id']]) . '">✎</a> '
             . action_btn('table.delete', ['id' => $t['id']], '🗑 O\'chirish', 'btn sm danger', "«{$t['name']}» o'chirilsinmi?$note") . '</td></tr>';
     }
     if (!$list) {
-        $h .= '<tr><td colspan="5" class="muted">Stol yo\'q. O\'ngdan qo\'shing.</td></tr>';
+        $h .= '<tr><td colspan="6" class="muted">Stol yo\'q. O\'ngdan qo\'shing.</td></tr>';
     }
     $h .= '</table></div><p class="muted small">Stol tarixda ishlatilgan bo\'lsa, hisobotlar buzilmasligi uchun u o\'chirilmaydi, faqat yashiriladi (kassada ko\'rinmaydi). Ochiq hisobi bor stolni avval kassada yoping.</p></div>'
-        . '<div class="card"><h3>' . ($edit ? 'Tahrirlash' : 'Yangi stol') . '</h3>' . form_open('table.save', ['id' => $e['id']]) . field('Nomi', 'name', $e['name'], 'text', 'required')
+        . '<div class="card"><h3>' . ($edit ? 'Tahrirlash' : 'Yangi stol') . '</h3>' . form_open('table.save', ['id' => $e['id']]) . field('Nomi', 'name', $e['name'], 'text', 'required', 'Kassada # bilan chiqadi. Masalan: 1')
+        . field('Zal', 'zone', $e['zone'] ?? '', 'text', 'list="zones" maxlength="50"', 'Masalan: ICHKI ZAL, TASHQARI. Bo\'sh qoldirish mumkin.') . $dl
         . field('Tartib', 'sort', $e['sort'], 'number') . field('Faol', 'is_active', $e['is_active'], 'checkbox') . '<button class="btn primary w100">Saqlash</button></form>'
         . ($edit ? '<div class="btns" style="margin-top:8px"><a class="btn" href="' . url('tables') . '">Bekor</a></div>' : '') . '<hr>'
-        . form_open('table.bulk') . field("Bir nechta stol qo'shish", 'count', 5, 'number', 'min="1" max="100"') . '<button class="btn w100">Qo\'shish</button></form></div></div>';
+        . form_open('table.bulk') . field("Bir nechta stol qo'shish", 'count', 5, 'number', 'min="1" max="100"') . field('Qaysi zalga', 'zone', '', 'text', 'list="zones" maxlength="50"', 'Zal yozilsa, stollar shu zalda 1, 2, 3... deb nomlanadi.') . '<button class="btn w100">Qo\'shish</button></form></div></div>';
     layout('tables', 'Stollar', $h, $me);
 }
 
@@ -426,9 +429,9 @@ function page_pos(array $me): void
         . field("To'lovda mijoz chekini avtomatik chiqarish", 'customer_auto', setting_on('customer_auto'), 'checkbox')
         . '<button class="btn primary w100">Saqlash</button></form><p class="muted small" style="margin-top:10px">Chekning ko\'rinishi (logo, matnlar, tartib, o\'lcham) alohida bo\'limda: <a href="' . url('receipt') . '"><b>🧾 Chek dizayni</b></a></p></div>';
     $h .= '<div class="card"><h3>Monoblokka o\'rnatish</h3><ol class="steps"><li>Monoblokda shu sahifani oching va <b>kassa-ornatish.bat</b> ni yuklab oling.</li><li>Faylni ikki marta bosing. Windows ogohlantirsa: «Подробнее» → «Выполнить в любом случае».</li>'
-        . '<li>O\'rnatuvchi printer xizmatini o\'rnatadi, avtozapuskka qo\'yadi va ish stolida <b>ADI BURGER POS</b> yorlig\'ini yaratadi.</li><li>Kassada ⚙ Sozlamalar → Printer: Xprinter IP manzili, port (9100) va chek o\'lchamini kiriting → Saqlash → Test chek.</li></ol>'
-        . '<a class="btn primary" href="' . e(url('download', ['f' => 'bat'])) . '">⬇ kassa-ornatish.bat</a> <a class="btn" href="../windows/adi-printer.exe">⬇ adi-printer.exe</a>'
-        . '<p class="muted small">Kassa Chrome App Mode (PWA) oynasida ochiladi — manzil satri va tablar ko\'rinmaydi. Bu Chrome oynasi, mustaqil .exe dastur emas. Printer xizmati (adi-printer.exe) — alohida kichik Windows dasturi.</p>'
+        . '<li>O\'rnatuvchi printer xizmatini o\'rnatadi, avtozapuskka qo\'yadi va ish stolida <b>ADI BURGER POS</b> yorlig\'ini yaratadi.</li><li>Kassada o\'ng tepadagi 👤 tugma → <b>Printer va aloqa</b>: «USB (Windows printer)» ni tanlab ro\'yxatdan printerni belgilang (yoki LAN: IP va port 9100) → Saqlash → Test chek.</li></ol>'
+        . '<a class="btn primary" href="' . e(url('download', ['f' => 'bat'])) . '">⬇ kassa-ornatish.bat</a>'
+        . '<p class="muted small">Kassa Chrome App Mode (PWA) oynasida ochiladi — manzil satri va tablar ko\'rinmaydi. Printer xizmatini (adi-printer.exe) alohida yuklash shart emas: <b>kassa-ornatish.bat</b> uni o\'zi yuklab, o\'rnatadi. Yangilash uchun ham shu faylni qayta ishga tushiring.</p>'
         . '<h3 style="margin-top:16px">Shu kompyuterdagi printer xizmati</h3><div id="local-agent" class="note">Tekshirilmoqda…</div></div></div>';
     $h .= '<div class="card"><h3>Kassa qurilmalari</h3><table class="t"><tr><th>Nomi</th><th>Oxirgi aloqa</th><th>Versiya</th><th>Printer</th><th>Holat</th><th></th></tr>';
     foreach ($devices as $d) {
@@ -457,7 +460,7 @@ function page_diagnostics(array $me): void
     $last = $checks ? max(array_column($checks, 'checked_at')) : null;
     $h = '<div class="card diag-head"><div class="stats mini">' . stat_card('Ishlayapti', '<span class="c-green">' . $cnt['ok'] . '</span>') . stat_card('Ogohlantirish', '<span class="c-yellow">' . $cnt['warn'] . '</span>')
         . stat_card('Xato', '<span class="c-red">' . $cnt['error'] . '</span>') . stat_card('Tekshirilmagan', '<span class="c-gray">' . $cnt['unchecked'] . '</span>') . '</div>'
-        . '<div class="btns">' . action_btn('diag.run', [], '🩺 Barchasini tekshirish', 'btn primary') . '<a class="btn" href="' . e(url('download', ['f' => 'diag'])) . '">⬇ Hisobotni yuklab olish</a>'
+        . '<div class="btns">' . action_btn('diag.run', [], '🩺 Barchasini tekshirish', 'btn primary') . action_btn('diag.fixall', [], '🔧 Hammasini tuzatish (bitta tugma)', 'btn primary', 'Topilgan muammolar avtomatik tuzatiladi (webhook, sinxronlash, papkalar, kesh, zaxira). Davom etasizmi?') . '<a class="btn" href="' . e(url('download', ['f' => 'diag'])) . '">⬇ Hisobotni yuklab olish</a>'
         . '<button class="btn" id="agent-test">🖨 Test chek (shu kompyuterdan)</button></div><p class="muted small">Oxirgi tekshiruv: ' . e($last ?? 'hali yo\'q') . '. Tizim faqat haqiqatan tekshirilgan narsani "Ishlayapti" deydi.</p>'
         . '<div id="local-agent" class="note">Shu kompyuterdagi printer xizmati tekshirilmoqda…</div></div>';
     $h .= '<div class="diag-grid">';
@@ -484,7 +487,7 @@ function page_diagnostics(array $me): void
         $h .= '<tr><td colspan="8" class="muted">Xato qayd etilmagan.</td></tr>';
     }
     $h .= '</table></div><p class="muted small">Barcha xatolarni avtomatik tuzatib bo\'lmaydi: internet kabeli, printer buzilishi, qog\'oz tugashi yoki hosting to\'xtashi — qo\'lda hal qilinadi. Tavsiyaga amal qiling. Loglarda token va parollar yashiriladi.</p></div>';
-    layout('diagnostics', "Tizim diagnostikasi va ta'mirlash", $h, $me);
+    layout('diagnostics', "Texnik bo'lim: nima ishlayapti, nima ishlamayapti", $h, $me);
 }
 
 // ===================== Zaxira =====================
@@ -501,4 +504,76 @@ function page_backup(array $me): void
     }
     $h .= '</table><p class="muted small">Tiklash: hosting panelidagi phpMyAdmin → Import orqali .sql.gz faylni yuklang (avval joriy bazaning zaxirasini oling).</p></div>';
     layout('backup', 'Zaxira', $h, $me);
+}
+
+// ===================== QR menyu =====================
+function page_qrmenu(array $me): void
+{
+    $base = app_url();
+    if ($base === '') {
+        $base = ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . base_path();
+    }
+    $menu = rtrim($base, '/') . '/menu/';
+    $tables = rows('SELECT name, zone FROM dining_tables WHERE is_active = 1 ORDER BY sort, id');
+    $list = [['label' => 'Umumiy (stolsiz)', 't' => '']];
+    foreach ($tables as $t) {
+        $no = trim((string)preg_replace('~^\s*stol\s*~iu', '', $t['name'])) ?: $t['name'];
+        $list[] = ['label' => (preg_match('~^\d+$~', trim($t['name'])) ? 'Stol ' . trim($t['name']) : $t['name']) . ($t['zone'] !== '' ? ' · ' . $t['zone'] : ''), 't' => $no];
+    }
+    $h = '<div class="card noprint"><h3>Stol uchun QR menyu</h3><p>Mijoz stoldagi QR-kodni telefon kamerasi bilan skanerlaydi — <b>Telegram emas, sayt</b> ochiladi va chiroyli menyuni ko\'radi (buyurtma berilmaydi, faqat ko\'rish).</p>'
+        . '<p>Menyu manzili: <a href="' . e($menu) . '" target="_blank"><b>' . e($menu) . '</b></a></p>'
+        . '<div class="btns"><button class="btn primary" onclick="window.print()">🖨 QR kodlarni chop etish</button><a class="btn" href="' . e($menu) . '" target="_blank">👁 Menyuni ko\'rish</a></div>'
+        . '<p class="muted small">Chop etib, kesib, stollarga qo\'ying. Menyudagi taomlar, narxlar va rasmlar «Mahsulotlar» bo\'limidan olinadi (botda ko\'rinadigan mahsulotlar). Sayt manzili o\'zgarsa, QR kodlarni qayta chop eting.</p></div>'
+        . '<div class="qr-grid" id="qr-grid" data-menu="' . e($menu) . '" data-list="' . e(json_encode($list, JSON_UNESCAPED_UNICODE)) . '" data-brand="' . e(setting('brand_name') ?: 'ADI BURGER') . '"></div>'
+        . '<script type="module">
+import { qrMatrix } from "../pos/js/qr.js?v=' . ADI_VERSION . '";
+const g = document.getElementById("qr-grid"), list = JSON.parse(g.dataset.list);
+for (const it of list) {
+  const url = g.dataset.menu + (it.t ? "?t=" + encodeURIComponent(it.t) : "");
+  const m = qrMatrix(url, "M"), q = 3, n = m.n + q * 2;
+  let d = "";
+  for (let r = 0; r < m.n; r++) for (let c = 0; c < m.n; c++) if (m.get(r, c)) d += `M${c + q} ${r + q}h1v1h-1z`;
+  const el = document.createElement("div");
+  el.className = "qr-card";
+  el.innerHTML = `<img src="../pos/icons/logo.png" alt=""><svg viewBox="0 0 ${n} ${n}" shape-rendering="crispEdges"><rect width="${n}" height="${n}" fill="#fff"/><path d="${d}" fill="#000"/></svg><b></b><span>Menyuni ko\'rish uchun skanerlang</span>`;
+  el.querySelector("b").textContent = it.label;
+  g.append(el);
+}
+</script>';
+    layout('qrmenu', 'QR menyu', $h, $me);
+}
+
+// ===================== Claude (MCP) =====================
+function page_mcp(array $me): void
+{
+    $on = mcp_enabled();
+    $hasKey = setting('mcp_key_hash') !== '';
+    $key = (string)($_SESSION['mcp_key_once'] ?? '');
+    unset($_SESSION['mcp_key_once']);
+    $base = app_url();
+    if ($base === '') {
+        $base = ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . base_path();
+    }
+    $url = rtrim($base, '/') . '/mcp/';
+    $h = '<div class="grid2"><div class="card"><h3>Claude (MCP) ulanishi ' . ($on ? '<span class="badge green">Yoqilgan</span>' : '<span class="badge gray">O\'chiq</span>') . '</h3>'
+        . '<p>Bu ulanish orqali Claude sayt, bot va kassani to\'liq ko\'ra oladi: holatni tekshiradi, xatolarni topadi, <b>kodni o\'qiydi va o\'zgartiradi</b>, yangi funksiya qo\'shadi.</p>';
+    if ($key !== '') {
+        $h .= '<div class="note warn"><b>Ulanish manzili (faqat hozir ko\'rsatiladi — nusxalab oling):</b><br><input class="mono" style="width:100%;margin-top:8px" readonly onclick="this.select()" value="' . e($url . '?k=' . $key) . '">'
+            . '<br><span class="small">Bu manzil — parol bilan teng. Uni hech kimga bermang, guruhga yozmang. Yo\'qotsangiz, yangi kalit yarating.</span></div>';
+    } elseif ($hasKey) {
+        $h .= '<div class="note">Manzil: <code>' . e($url) . '?k=••••••</code><br><span class="small">Kalit xavfsizlik uchun qayta ko\'rsatilmaydi. Kerak bo\'lsa «Yangi kalit» ni bosing (eski kalit o\'chadi).</span></div>';
+    }
+    $h .= '<div class="btns" style="margin-top:12px">' . ($on ? action_btn('mcp.toggle', ['on' => 0], '⏻ O\'chirish', 'btn danger') : action_btn('mcp.toggle', ['on' => 1], '⏻ Yoqish', 'btn primary'))
+        . ($hasKey ? action_btn('mcp.newkey', [], '🔑 Yangi kalit', 'btn', 'Yangi kalit yaratiladi, eskisi ishlamay qoladi. Claude\'dagi manzilni ham yangilash kerak bo\'ladi. Davom etasizmi?') : '') . '</div>'
+        . '<h3 style="margin-top:18px">Qanday ulanadi</h3><ol class="steps"><li>«Yoqish» ni bosing va chiqqan manzilni nusxalang.</li><li>Claude ilovasida: <b>Settings → Connectors → Add custom connector</b>.</li><li>Nomi: <b>ADI BURGER</b>, manzil (URL) — nusxalangan manzil. Saqlang.</li><li>Chatda yozing: «ADI BURGER holatini ko\'r».</li></ol></div>'
+        . '<div class="card"><h3>Claude nimalar qila oladi</h3><ul class="steps"><li><b>holat, diagnostika, tuzatish</b> — tizim holati va avtomatik tuzatish</li><li><b>fayllar, oqish, qidirish</b> — kodni ko\'rish</li><li><b>yozish, almashtirish</b> — kodni o\'zgartirish (har safar zaxira olinadi, PHP xatosi bo\'lsa yozilmaydi)</li><li><b>zaxiralar, qaytarish</b> — o\'zgarishni ortga qaytarish</li><li><b>sql</b> — bazadan faqat o\'qish</li><li><b>jurnal, sayt_sinov, bot_sinov</b> — xatolar va sinov</li></ul>'
+        . '<h3>Xavfsizlik</h3><ul class="steps"><li>Standart holatda o\'chiq. Kalit bazada ochiq saqlanmaydi.</li><li>Parollar (config), zaxiralar va mijoz to\'lov cheklari MCP orqali ochilmaydi.</li><li>Baza MCP orqali o\'zgartirilmaydi (faqat o\'qiladi).</li><li>Har bir amal jurnalga yoziladi. Ishlatmayotganingizda o\'chirib qo\'ying.</li></ul>';
+    $log = [];
+    $files = glob(ROOT . '/storage/logs/mcp-*.log.php') ?: [];
+    if ($files) {
+        sort($files);
+        $log = array_slice(array_slice(explode("\n", trim((string)file_get_contents(end($files)))), 1), -12);
+    }
+    $h .= '<h3>Oxirgi amallar</h3><pre class="small" style="white-space:pre-wrap;max-height:220px;overflow:auto">' . e($log ? implode("\n", array_reverse($log)) : 'Hali amal yo\'q.') . '</pre></div></div>';
+    layout('mcp', 'Claude (MCP) ulanishi', $h, $me);
 }

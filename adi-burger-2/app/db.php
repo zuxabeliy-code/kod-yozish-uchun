@@ -2,7 +2,7 @@
 declare(strict_types=1);
 defined('ADI') || exit;
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 function db(): PDO
 {
@@ -110,6 +110,7 @@ function db_migrate(?PDO $pdo = null): array
 /**
  * Mavjud bazani yangi versiyaga olib chiqadi (ma'lumot o'chmaydi). Har bir qadam qayta ishga tushirilsa ham xavfsiz.
  * v2: xodimlarga login va parol (kassaga login bilan kirish uchun).
+ * v3: stollarga zal (zona) nomi.
  */
 function db_upgrade(PDO $pdo): int
 {
@@ -129,6 +130,10 @@ function db_upgrade(PDO $pdo): int
     $st->execute();
     if ((int)$st->fetchColumn() === 0) {
         $pdo->exec('ALTER TABLE employees ADD UNIQUE KEY uq_employees_login (login)');
+        $n++;
+    }
+    if (!$has('dining_tables', 'zone')) {
+        $pdo->exec("ALTER TABLE dining_tables ADD COLUMN zone VARCHAR(50) NOT NULL DEFAULT '' AFTER name");
         $n++;
     }
     // Administratorlarning admin panel logini kassa logiga ham ko'chiriladi (parolni qayta kiritish kerak bo'ladi)

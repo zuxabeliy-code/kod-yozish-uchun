@@ -60,7 +60,7 @@ function inst_seed(PDO $pdo): void
         $st->execute([$map[$cat], $name, $desc, $price, $img, $i + 1, $posOnly ? 0 : 1]);
     }
     $st = $pdo->prepare('INSERT INTO dining_tables (name, sort) VALUES (?, ?)');
-    for ($i = 1; $i <= 10; $i++) {
+    for ($i = 1; $i <= 6; $i++) {
         $st->execute(["Stol $i", $i]);
     }
 }

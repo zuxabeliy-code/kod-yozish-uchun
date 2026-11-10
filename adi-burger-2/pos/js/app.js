@@ -8,11 +8,11 @@ import {
   S, saveOrder, newDraft, addProduct, setQty, cancelSent, confirmOrder, payOrder, cancelWholeOrder, openOrders, drafts,
   orderTotal, itemsTotal, paidTotal, unsentLines, openShift, shiftReport, closeShift, localReport, nextNumber,
 } from './model.js';
-import { uuid, fmt, som, h, dt, nowIso, localDate, toast, modal, confirmBox, promptBox, closeAllModals, hasModal, beep, alarmStart, alarmStop, pbkdf2Hex, debounce, audio, $, $$ } from './util.js';
+import { uuid, fmt, som, h, dt, pad2, nowIso, localDate, toast, modal, confirmBox, promptBox, closeAllModals, hasModal, beep, alarmStart, alarmStop, pbkdf2Hex, debounce, audio, $, $$ } from './util.js';
 
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 const app = document.getElementById('app');
-const UI = { view: 'sale', orderQ: '', orderType: 'all', parked: {}, cur: null, sel: null, cat: 'all', q: '', orderFilter: 'open', settingsTab: 'printer', reportPeriod: 'today' };
+const UI = { view: 'tables', mode: 'table', zone: 'all', billMap: {}, showSearch: false, orderQ: '', orderType: 'all', cur: null, sel: null, cat: null, q: '', orderFilter: 'open', settingsTab: 'printer', reportPeriod: 'today' };
 const TYPE_NAMES = { takeaway: 'Olib ketish', table: 'Stolda', phone: 'Telefon', delivery: 'Yetkazish' };
 const CANCEL_REASONS = ['Mijoz voz kechdi', "Noto'g'ri kiritildi", 'Taom tugagan', 'Uzoq kutildi'];
 
@@ -22,7 +22,12 @@ const CANCEL_REASONS = ['Mijoz voz kechdi', "Noto'g'ri kiritildi", 'Taom tugagan
 async function boot() {
   persist();
   audio.muted = (await kv.get('sound_off')) === true;
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) {
+    const had = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+    // Yangi versiya yuklanganda kassa o'zi qayta ochilmaydi — kassir qulay paytda "Yangilash" ni bosadi
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (had) updateBanner(); });
+  }
   const token = await kv.get('device_token');
   S.catalog = await kv.get('catalog');
   if (!token) return renderSetup();
@@ -57,7 +62,7 @@ async function loadCatalog() {
       S.shift = { uuid: r.open_shift.uuid, number: Number(r.open_shift.number), employee_id: Number(r.open_shift.employee_id), employee: e ? e.name : '', opened_at: r.open_shift.opened_at.replace(' ', 'T'), opening_cash: Number(r.open_shift.opening_cash), status: 'open' };
       await kv.set('shift', S.shift);
     }
-    if (UI.view === 'sale' && S.employee) renderView();
+    if (S.employee && ['sale', 'tables', 'list'].includes(UI.view) && !hasModal() && document.activeElement?.tagName !== 'INPUT') renderView();
     return r;
   }
   return null;
@@ -102,8 +107,7 @@ function renderLock() {
   alarmStop();
   let pin = '';
   app.innerHTML = `<div class="lock"><div class="lock-card">
-    <div class="logo-mark" style="margin:0 auto;width:56px;height:56px;font-size:20px">AB</div>
-    <h1>${h(S.catalog?.settings?.brand_name || 'ADI BURGER')}</h1>
+    <img src="icons/logo.png" alt="ADI BURGER" style="height:74px;display:block;margin:0 auto 6px" draggable="false">
     <div class="muted">PIN-kodni kiriting</div>
     <div class="pin-dots" id="dots"><i></i><i></i><i></i><i></i></div>
     <div class="note bad hidden" id="pin-err" style="margin-bottom:12px"></div>
@@ -195,12 +199,6 @@ async function afterLogin() {
   renderShell();
   if (!S.shift) await shiftOpenModal();
   else if (S.shift.employee_id !== S.employee.id) toast(`Smena #${S.shift.number} ochiq (${S.shift.employee || ''})`, 'info');
-  restoreDraft();
-}
-
-async function restoreDraft() {
-  const d = (await drafts()).sort((a, b) => b.updated_at?.localeCompare(a.updated_at || '') || 0)[0];
-  if (d && d.items.length && !UI.cur) { UI.cur = d; renderView(); toast('Saqlanmagan buyurtma tiklandi', 'info'); }
 }
 
 function shiftOpenModal() {
@@ -226,85 +224,198 @@ function shiftOpenModal() {
 // ====================================================================
 // Asosiy oyna
 // ====================================================================
-const TABS = [
-  ['tables', '🍽', 'Stolda', 'n-table', 1], ['takeaway', '🛍', 'Olib ketish', 'n-takeaway', 1], ['delivery', '🛵', 'Yetkazish', 'n-delivery', 1],
-  ['telegram', '✈️', 'Telegram'], ['orders', '📋', 'Buyurtmalar'], ['shift', '🕘', 'Smena'], ['reports', '📊', 'Hisobot'], ['settings', '⚙', 'Sozlamalar'],
-];
+const svg = (d) => `<svg class="ic" viewBox="0 0 24 24">${d}</svg>`;
+const IC = {
+  table: svg('<path d="M3 7h18M5 7v12M19 7v12M8 7v6h8V7"/>'),
+  bag: svg('<path d="M6 8h12l-1 12H7L6 8z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8M10 12v4M14 12v4"/>'),
+  moto: svg('<circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="17" r="2.5"/><path d="M8.5 17h7l-2-7h-3M13.5 12.5H18l2 3M3 12h5.5l1.5 5"/>'),
+  search: svg('<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>'),
+  refresh: svg('<path d="M20 5v5h-5M4 19v-5h5"/><path d="M19.4 10A8 8 0 0 0 5.6 7.5M4.6 14a8 8 0 0 0 13.8 2.5"/>'),
+  lock: svg('<rect x="5" y="10.5" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>'),
+  user: svg('<circle cx="12" cy="8.5" r="4" fill="currentColor"/><path d="M4.5 20.5c1-4 4-5.5 7.5-5.5s6.500 1.500 7.500 5.500" fill="currentColor"/>'),
+  usr: svg('<circle cx="12" cy="8" r="3.500"/><path d="M5.500 20c.8-3.500 3.200-5 6.500-5s5.700 1.500 6.500 5"/>'),
+  dish: svg('<path d="M3 17h18M5 17a7 7 0 0 1 14 0M12 7.500V10M10.500 7.500h3"/><path d="M3 20h18"/>'),
+  grid: svg('<rect x="3.500" y="3.500" width="17" height="17" rx="3"/><circle cx="8.500" cy="8.500" r="2"/><circle cx="15.500" cy="8.500" r="2"/><circle cx="8.500" cy="15.500" r="2"/><path d="M15.500 13.500l2 2-2 2-2-2z"/>'),
+  clock: svg('<circle cx="12" cy="12" r="8.500"/><path d="M12 7.500V12l3 2"/>'),
+  pin: svg('<path d="M12 21s6.500-5.600 6.500-10.500a6.500 6.500 0 0 0-13 0C5.500 15.400 12 21 12 21z"/><circle cx="12" cy="10.500" r="2.200"/>'),
+  phone: svg('<path d="M6 3.500h3l1.500 4-2 1.500a11 11 0 0 0 6.500 6.500l1.500-2 4 1.500v3a2 2 0 0 1-2 2A16 16 0 0 1 4 5.500a2 2 0 0 1 2-2z"/>'),
+  comment: svg('<path d="M4 5.500h16v10.500H10l-4 3.500v-3.500H4z"/><path d="M8 9.500h8M8 12.500h5"/>'),
+  swap: svg('<rect x="3.500" y="3.500" width="7" height="7" rx="1"/><rect x="13.500" y="13.500" width="7" height="7" rx="1"/><path d="M14 4.500h4.500a2 2 0 0 1 2 2V10M10 19.500H5.500a2 2 0 0 1-2-2V14"/>'),
+  receipt: svg('<path d="M6 3.500h12v17l-2-1.500-2 1.500-2-1.500-2 1.500-2-1.500-2 1.500z"/><path d="M9 8h6M9 11.500h6M9 15h4"/>'),
+  cart: svg('<path d="M3 4.500h2.500l2.200 10h9.800l2-7.500H7"/><circle cx="9.500" cy="19" r="1.500" fill="currentColor"/><circle cx="16.500" cy="19" r="1.500" fill="currentColor"/>'),
+  cash: svg('<rect x="3" y="6.500" width="18" height="11" rx="1.500" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="2.500" fill="#fff" stroke="none"/>'),
+  x: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
+  expand: svg('<path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7"/>'),
+  tg: svg('<path d="M20.500 4.500L3.500 11l5.500 2 2 6 3-4 4.500 3.500z"/><path d="M9 13l8-6"/>'),
+  list: svg('<path d="M8 6.500h12M8 12h12M8 17.500h12"/><circle cx="4.200" cy="6.500" r="1" fill="currentColor"/><circle cx="4.200" cy="12" r="1" fill="currentColor"/><circle cx="4.200" cy="17.500" r="1" fill="currentColor"/>'),
+  chart: svg('<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>'),
+  gear: svg('<circle cx="12" cy="12" r="3"/><path d="M12 3v2.500M12 18.500V21M3 12h2.500M18.500 12H21M5.600 5.600l1.800 1.800M16.600 16.600l1.800 1.800M5.600 18.400l1.800-1.800M16.600 7.400l1.800-1.800"/>'),
+  out: svg('<path d="M10 4.500H5.500v15H10M15 8l4 4-4 4M19 12H9.500"/>'),
+};
+const MODES = [['tables', 'table', 'Stolda', 'n-table'], ['takeaway', 'bag', 'Olib ketish', 'n-takeaway'], ['delivery', 'moto', 'Yetkazish', 'n-delivery']];
+
+function logoHtml() {
+  return `<img class="logo-img" id="logo" src="icons/logo.png" alt="${h(S.catalog?.settings?.brand_name || 'ADI BURGER')}" draggable="false">`;
+}
+
+/** Logoni 7 marta ketma-ket bosish — admin panelni ochadi (yashirin kirish, parol baribir so'raladi). */
+let logoTaps = [];
+function onLogoTap() {
+  const now = Date.now();
+  logoTaps = logoTaps.filter(t => now - t < 4000);
+  logoTaps.push(now);
+  if (logoTaps.length >= 7) { logoTaps = []; window.open(new URL('../admin/', location.href).href, 'adi-admin'); }
+}
 
 function renderShell() {
+  if (!S.catalog.tables.length && UI.view === 'tables') { UI.view = 'list'; UI.mode = 'takeaway'; }
   app.innerHTML = `<div class="shell">
     <header class="topbar">
-      <div class="brand"><div class="logo-mark">AB</div><span><b>${h(S.catalog?.settings?.brand_name || 'ADI BURGER')}</b></span></div>
-      <nav class="tabs" id="tabs">${TABS.map(([k, i, l, bid, mode]) => `<button class="tab${mode ? ' mode' : ''}" data-tab="${k}"><span class="ico">${i}</span><span class="lbl">${l}</span>${k === 'telegram' ? '<span class="badge hidden" id="tg-badge">0</span>' : (bid ? `<span class="badge hidden" id="${bid}">0</span>` : '')}</button>`).join('')}</nav>
-      <div class="status">
-        <div class="pill btn" id="st-net" title="Internet / server"><span class="dot"></span><span>Server</span></div>
-        <div class="pill btn" id="st-sync" title="Serverga yuborilmagan amallar"><span>⇅</span><span class="num">0</span></div>
-        <div class="pill btn" id="st-prn" title="Printer"><span class="dot"></span><span>Printer</span></div>
-        <div class="pill who" title="Kassir"><span>👤</span><span>${h(S.employee.name)}</span></div>
-        <div class="pill" id="st-shift"></div>
-        <div class="pill clock num" id="clock"></div>
-        <button class="pill btn" id="lockbtn" title="Qulflash">🔒</button>
+      <div class="brand">${logoHtml()}</div>
+      <nav class="modes" id="tabs">${MODES.map(([k, i, l, bid]) => `<button class="mtab tab mode" data-tab="${k}">${IC[i]}<span class="lbl">${l}</span><span class="badge hidden" id="${bid}">0</span></button>`).join('')}</nav>
+      <div class="tools">
+        <button class="tool" id="searchbtn" title="Qidirish">${IC.search}</button>
+        <button class="tool" id="refreshbtn" title="Yangilash">${IC.refresh}</button>
+        <button class="tool lk" id="lockbtn" title="Qulflash">${IC.lock}</button>
+        <button class="tool user" id="userbtn" title="Menyu">${IC.user}<span class="badge blue hidden" id="tg-badge">0</span></button>
       </div>
     </header>
     <main class="view" id="view"></main>
+    <footer class="statusbar">
+      <span class="pill" id="st-net" title="Server bilan aloqa"><span class="dot"></span><span>Server</span></span>
+      <span class="pill" id="st-inet" title="Internet"><span class="dot"></span><span>Internet</span></span>
+      <span class="pill" id="st-prn" title="Printer"><span class="dot"></span><span>Printer</span></span>
+      <span class="pill" id="st-sync" title="Serverga yuborilmagan amallar"><span>⇅</span><span class="num">0</span></span>
+      <span class="sp"></span>
+      <span id="st-shift"></span>
+      <span class="mono">Versiya: ${VERSION}</span>
+      <span class="mono" id="clock"></span>
+      <button class="fsbtn" id="fsbtn" title="To'liq ekran">${IC.expand}</button>
+    </footer>
   </div>`;
   $('#tabs').onclick = (e) => { const t = e.target.closest('[data-tab]'); if (t) go(t.dataset.tab); };
-  $('#lockbtn').onclick = () => renderLock();
+  $('#logo').onclick = onLogoTap;
+  $('#lockbtn').onclick = () => { leaveSale(); renderLock(); };
+  $('#userbtn').onclick = (e) => { e.stopPropagation(); userMenu(); };
+  $('#searchbtn').onclick = () => toggleSearch();
+  $('#refreshbtn').onclick = () => refreshAll();
+  $('#fsbtn').onclick = () => { if (document.fullscreenElement) document.exitFullscreen?.(); else document.documentElement.requestFullscreen?.().catch(() => {}); };
   $('#st-prn').onclick = () => { UI.settingsTab = 'printer'; go('settings'); };
   $('#st-sync').onclick = () => { UI.settingsTab = 'sync'; go('settings'); };
   $('#st-net').onclick = () => { UI.settingsTab = 'sync'; go('settings'); };
+  $('#st-inet').onclick = () => { UI.settingsTab = 'sync'; go('settings'); };
   tickClock();
   renderStatus();
   renderView();
   updateTgBadge();
 }
 
-function go(view) {
-  if (view === 'takeaway' || view === 'delivery') return openMode(view);
-  UI.view = view;
-  renderView();
+/** O'ng tepadagi foydalanuvchi menyusi: Telegram, buyurtmalar, smena, hisobot, sozlamalar, chiqish. */
+function userMenu() {
+  const old = $('#umenu');
+  if (old) return old.remove();
+  const el = document.createElement('div');
+  el.id = 'umenu'; el.className = 'umenu';
+  const items = [['telegram', 'tg', 'Telegram buyurtmalari'], ['orders', 'list', 'Buyurtmalar tarixi'], ['shift', 'clock', 'Smena (ochish / yopish)'], ['settings', 'receipt', 'Printer va aloqa']];
+  const tgN = $('#tg-badge')?.classList.contains('hidden') ? 0 : Number($('#tg-badge')?.textContent || 0);
+  el.innerHTML = `<div class="who"><b>${h(S.employee.name)}</b><span>${S.employee.role === 'admin' ? 'Administrator' : 'Kassir'} · ${S.shift ? 'Smena #' + S.shift.number : 'Smena yopiq'}</span></div>
+    ${items.map(([k, i, l]) => `<button data-go="${k}">${IC[i]}<span>${l}</span>${k === 'telegram' && tgN ? `<span class="badge blue">${tgN}</span>` : ''}</button>`).join('')}
+    <button class="out" data-go="lock">${IC.out}<span>Chiqish (qulflash)</span></button>`;
+  document.body.append(el);
+  el.onclick = (e) => {
+    const b = e.target.closest('[data-go]'); if (!b) return;
+    el.remove();
+    if (b.dataset.go === 'lock') { leaveSale(); return renderLock(); }
+    go(b.dataset.go);
+  };
+  setTimeout(() => document.addEventListener('pointerdown', function off(e) {
+    if (!el.isConnected) return document.removeEventListener('pointerdown', off);
+    if (!el.contains(e.target) && !e.target.closest('#userbtn')) { el.remove(); document.removeEventListener('pointerdown', off); }
+  }), 0);
 }
 
-/** Olib ketish / Yetkazish: savdo oynasi shu rejimda ochiladi. Boshqa rejimdagi tasdiqlanmagan taomlar yo'qolmaydi (vaqtincha saqlanadi). */
-function openMode(type) {
-  const o = UI.cur;
-  if (!(UI.view === 'sale' && o && o.status === 'draft' && o.type === type)) {
-    if (o && o.status === 'draft' && o.items.length) UI.parked[o.type] = o;
-    UI.cur = UI.parked[type] || newDraft(type);
-    delete UI.parked[type];
-    UI.sel = null;
+function toggleSearch() {
+  if (UI.view === 'sale') {
+    UI.showSearch = !UI.showSearch;
+    if (!UI.showSearch) UI.q = '';
+    renderView();
+    if (UI.showSearch) setTimeout(() => $('#q')?.focus(), 30);
+  } else {
+    go('orders');
+    setTimeout(() => $('#oq')?.focus(), 60);
   }
-  UI.view = 'sale';
+}
+
+async function refreshAll() {
+  const b = $('#refreshbtn');
+  b.classList.add('spin');
+  kick(10);
+  agent.refreshStatus();
+  const r = await loadCatalog();
+  b.classList.remove('spin');
+  toast(r ? 'Yangilandi' : "Server bilan aloqa yo'q", r ? 'ok' : 'warn', r ? '' : "Kassa lokal ma'lumot bilan ishlayapti. Internet qaytganda o'zi yangilanadi.");
+  if (!hasModal()) renderView();
+}
+
+/** Savdo oynasidan chiqishda joriy hisob lokal saqlanadi (bo'sh qoralama o'chadi). */
+function leaveSale() {
+  $('#umenu')?.remove();
+  if (UI.view === 'sale' && UI.cur) persistCur();
+  UI.cur = null; UI.sel = null;
+}
+
+function go(view) {
+  if (view !== 'sale') leaveSale();
+  if (view === 'takeaway' || view === 'delivery') { UI.mode = view; UI.view = 'list'; }
+  else if (view === 'tables') { UI.mode = 'table'; UI.view = 'tables'; }
+  else UI.view = view;
   renderView();
 }
 
-/** Savdo oynasi qaysi tabga tegishli. */
-function activeTab() {
-  if (UI.view !== 'sale') return UI.view;
-  const t = cur().type;
-  return t === 'table' ? 'tables' : t === 'delivery' ? 'delivery' : 'takeaway';
+function openSale(o) {
+  if (UI.view === 'sale' && UI.cur && UI.cur !== o) persistCur();
+  UI.cur = o; UI.sel = null; UI.view = 'sale';
+  UI.mode = o.type === 'table' ? 'table' : o.type === 'delivery' ? 'delivery' : 'takeaway';
+  renderView();
 }
 
-/** Tepadagi tablarda faol (ochiq) buyurtmalar soni. */
+/** Tasdiqlash, to'lov yoki bekor qilishdan keyin shu rejimning ro'yxatiga qaytadi. */
+function backToList(type) {
+  UI.cur = null; UI.sel = null;
+  if (type === 'table') { UI.mode = 'table'; UI.view = 'tables'; }
+  else { UI.mode = type === 'delivery' ? 'delivery' : 'takeaway'; UI.view = 'list'; }
+  renderView();
+}
+
+/** Qaysi tepadagi tab faol. */
+function activeTab() {
+  if (UI.view === 'sale' && UI.cur) { const t = UI.cur.type; return t === 'table' ? 'tables' : t === 'delivery' ? 'delivery' : 'takeaway'; }
+  if (UI.view === 'list') return UI.mode;
+  return UI.view;
+}
+
+const TG_ACTIVE = ['new', 'accepted', 'ready'];
+
+/** Tepadagi tablarda faol (ochiq) buyurtmalar soni. Telegram buyurtmalari ham qo'shiladi. */
 async function updateCounts() {
   if (!S.employee) return;
   const n = { table: 0, takeaway: 0, delivery: 0 };
-  for (const o of await openOrders()) n[o.type === 'table' ? 'table' : o.type === 'delivery' ? 'delivery' : 'takeaway']++;
+  const busy = new Set();
+  for (const o of await openOrders()) {
+    if (o.type === 'table') busy.add(o.table_id);
+    else n[o.type === 'delivery' ? 'delivery' : 'takeaway']++;
+  }
+  n.table = busy.size;
+  for (const o of await db.all('tg')) if (TG_ACTIVE.includes(o.status)) n[o.type === 'delivery' ? 'delivery' : 'takeaway']++;
   for (const [k, id] of [['table', 'n-table'], ['takeaway', 'n-takeaway'], ['delivery', 'n-delivery']]) {
     const b = $('#' + id);
     if (b) { b.textContent = n[k]; b.classList.toggle('hidden', !n[k]); }
   }
 }
 
-function nextAfterClose(type) {
-  UI.sel = null;
-  if (type === 'table') { UI.cur = null; UI.view = 'tables'; }
-  else { UI.cur = newDraft(type === 'delivery' ? 'delivery' : 'takeaway'); UI.view = 'sale'; }
-}
-
 function tickClock() {
   const c = $('#clock');
-  if (c) { const d = new Date(); c.textContent = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; }
+  if (c) { const d = new Date(); c.textContent = `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()} | ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
 }
 
 function renderStatus() {
@@ -312,33 +423,44 @@ function renderStatus() {
   const net = $('#st-net');
   const online = syncState.online && navigator.onLine;
   net.querySelector('.dot').className = 'dot ' + (syncState.lastOk ? (online ? 'ok' : 'bad') : (online ? 'warn' : 'bad'));
-  net.querySelector('span:last-child').textContent = online ? 'Onlayn' : 'Offline';
+  net.querySelector('span:last-child').textContent = online ? 'Server' : 'Offline';
+  $('#st-inet .dot').className = 'dot ' + (navigator.onLine ? 'ok' : 'bad');
   const sy = $('#st-sync');
   sy.querySelector('.num').textContent = syncState.outbox;
   sy.title = `Serverga yuborilmagan: ${syncState.outbox} ta amal` + (syncState.lastError ? `\nOxirgi xato: ${syncState.lastError}` : '');
-  sy.style.color = syncState.outbox > 0 ? 'var(--yellow)' : '';
+  sy.style.color = syncState.outbox > 0 ? '#c97a00' : '';
+  sy.style.fontWeight = syncState.outbox > 0 ? '700' : '';
   const a = agent.agentState;
   const p = $('#st-prn');
   let cls = 'warn', txt = 'Printer';
-  if (a.reachable === false) { cls = 'bad'; txt = 'Xizmat yo\'q'; }
-  else if (a.printer && !a.printer.configured) { cls = 'warn'; txt = 'Sozlanmagan'; }
+  if (a.reachable === false) { cls = 'bad'; txt = 'Printer xizmati yo\'q'; }
+  else if (a.printer && !a.printer.configured) { cls = 'warn'; txt = 'Printer sozlanmagan'; }
   else if (a.printer && a.printer.ok) { cls = 'ok'; txt = 'Printer'; }
   else if (a.printer) { cls = 'bad'; txt = 'Printer xato'; }
   const bad = (a.queue?.error || 0) + (a.queue?.unknown || 0);
   p.querySelector('.dot').className = 'dot ' + (bad && cls === 'ok' ? 'warn' : cls);
   p.querySelector('span:last-child').textContent = txt + (bad ? ` (${bad})` : '');
   p.title = a.error || a.printer?.error || (a.printer?.target ? 'Ulangan: ' + a.printer.target : '');
-  $('#st-shift').textContent = S.shift ? `Smena #${S.shift.number}` : 'Smena yopiq';
+  $('#st-shift').textContent = S.shift ? `Smena #${S.shift.number} · ${S.employee.name}` : 'Smena yopiq';
   if (UI.view === 'settings') refreshSettingsLive();
 }
 
 function renderView() {
   if (!S.employee) return;
-  $$('#tabs .tab').forEach(t => t.classList.toggle('on', t.dataset.tab === activeTab()));
+  const at = activeTab();
+  $$('#tabs .tab').forEach(t => t.classList.toggle('on', t.dataset.tab === at));
   updateCounts();
   const v = $('#view');
   if (!v) return;
-  ({ sale: viewSale, tables: viewTables, orders: viewOrders, telegram: viewTelegram, shift: viewShift, reports: viewReports, settings: viewSettings }[UI.view])(v);
+  v.onclick = null;
+  ({ sale: viewSale, tables: viewTables, list: viewList, orders: viewOrders, telegram: viewTelegram, shift: viewShift, reports: viewReports, settings: viewSettings }[UI.view])(v);
+}
+
+function updateBanner() {
+  banner('Kassaning yangi versiyasi tayyor.', '');
+  const b = $('#banner'); if (!b) return;
+  const r = document.createElement('button'); r.textContent = 'Yangilash'; r.onclick = () => location.reload();
+  b.insertBefore(r, b.lastChild);
 }
 
 function banner(text, cls = '') {
@@ -357,41 +479,43 @@ function cur() {
   return UI.cur;
 }
 
-function tableName(id) { return S.catalog.tables.find(t => t.id === id)?.name || 'Stol'; }
+const tableById = (id) => S.catalog.tables.find(t => t.id === id);
+const zoneOf = (t) => String(t?.zone || '').trim();
+/** Stol raqami: "Stol 3" -> "3" (kassada # bilan ko'rsatiladi). */
+const tableNo = (t) => (t ? String(t.name).replace(/^\s*stol\s*/i, '') || t.name : '?');
+function tableName(id) {
+  const t = tableById(id);
+  if (!t) return 'Stol';
+  return (/^\d+$/.test(t.name.trim()) ? 'Stol ' + t.name.trim() : t.name) + (zoneOf(t) ? ' · ' + zoneOf(t) : '');
+}
+const empName = (id) => (S.catalog.employees.find(e => e.id === Number(id))?.name || '').toUpperCase();
+const sameKind = (a, b) => (a === 'phone' ? 'takeaway' : a) === (b === 'phone' ? 'takeaway' : b);
 
 function viewSale(v) {
-  const o = cur();
   const cats = S.catalog.categories;
+  if (UI.cat === null) UI.cat = cats[0]?.id ?? 'all';
   v.innerHTML = `<div class="sale">
-    <section class="panel order" id="order"></section>
+    <aside class="side" id="cats"><button class="sico ${UI.cat === 'all' ? 'on' : ''}" data-cat="all" title="Hammasi">${IC.dish}</button>
+      ${cats.map(c => `<button class="cat ${UI.cat === c.id ? 'on' : ''}" data-cat="${c.id}">${h(c.name)}</button>`).join('')}</aside>
     <section class="center">
-      <div class="topc"><div class="searchbar"><div class="search"><span class="s-ico">🔍</span><input id="q" placeholder="Mahsulot qidirish…" value="${h(UI.q)}" autocomplete="off"></div></div><div class="strip" id="strip"></div></div>
+      <div class="searchbar ${UI.showSearch ? '' : 'hidden'}"><div class="search"><span class="s-ico">${IC.search}</span><input id="q" placeholder="Mahsulot qidirish…" value="${h(UI.q)}" autocomplete="off"><button class="s-x" id="qx">✕</button></div></div>
       <div class="products" id="prods"></div>
-      <div class="actionbar" id="acts">
-        <button class="act" data-a="new"><span class="i">＋</span>Yangi</button>
-        <button class="act" data-a="qty"><span class="i">#</span>Miqdor</button>
-        <button class="act red" data-a="del"><span class="i">🗑</span>O'chirish</button>
-        <button class="act" data-a="note"><span class="i">✎</span>Izoh</button>
-        <button class="act" data-a="cust"><span class="i">👤</span>Mijoz</button>
-        <button class="act" data-a="bill"><span class="i">🧾</span>Hisob cheki</button>
-      </div>
     </section>
-    <aside class="panel cats" id="cats">
-      <button class="cat ${UI.cat === 'all' ? 'on' : ''}" data-cat="all"><span class="ci">★</span>Hammasi</button>
-      ${cats.map(c => `<button class="cat ${UI.cat === c.id ? 'on' : ''}" data-cat="${c.id}"><span class="ci">${h(c.icon || '•')}</span>${h(c.name)}</button>`).join('')}
-    </aside>
+    <section class="order" id="order"></section>
   </div>`;
   renderOrderPanel();
   renderProducts();
-  renderStrip();
-  $('#strip').onclick = (e) => {
-    const b = e.target.closest('[data-open]');
-    if (b) { UI.cur = stripOrders.find(x => x.uuid === b.dataset.open) || UI.cur; UI.sel = null; renderView(); }
+  refreshBills();
+  $('#cats').onclick = (e) => {
+    const b = e.target.closest('[data-cat]'); if (!b) return;
+    UI.cat = b.dataset.cat === 'all' ? 'all' : Number(b.dataset.cat);
+    $$('#cats [data-cat]').forEach(x => x.classList.toggle('on', x === b));
+    renderProducts();
+    $('#prods').scrollTop = 0;
   };
-  $('#cats').onclick = (e) => { const b = e.target.closest('[data-cat]'); if (!b) return; UI.cat = b.dataset.cat === 'all' ? 'all' : Number(b.dataset.cat); $$('#cats .cat').forEach(x => x.classList.toggle('on', x === b)); renderProducts(); };
   $('#q').oninput = debounce((e) => { UI.q = e.target.value; renderProducts(); }, 120);
+  $('#qx').onclick = () => { UI.showSearch = false; UI.q = ''; renderView(); };
   $('#prods').onclick = (e) => { const b = e.target.closest('[data-pid]'); if (b) onProduct(Number(b.dataset.pid)); };
-  $('#acts').onclick = (e) => { const b = e.target.closest('[data-a]'); if (b) onAction(b.dataset.a); };
 }
 
 function renderProducts() {
@@ -401,28 +525,52 @@ function renderProducts() {
   const o = cur();
   const inCart = {};
   o.items.forEach(i => { if (i.product_id) inCart[i.product_id] = (inCart[i.product_id] || 0) + i.qty; });
-  const list = S.catalog.products.filter(p => (UI.cat === 'all' || p.category_id === UI.cat) && (!q || p.name.toLowerCase().includes(q)));
+  // Qidiruvda barcha bo'limlardan izlanadi
+  const list = S.catalog.products.filter(p => (q ? p.name.toLowerCase().includes(q) : (UI.cat === 'all' || p.category_id === UI.cat)));
   box.innerHTML = list.length ? list.map(p => `<button class="prod ${p.available ? '' : 'off'}" data-pid="${p.id}">
       <div class="img" ${p.image ? `style="background-image:url('${h(p.image)}')"` : ''}>${p.image ? '' : (S.catalog.categories.find(c => c.id === p.category_id)?.icon || '🍔')}</div>
-      <div class="info"><div class="nm">${h(p.name)}</div><div class="pr num">${fmt(p.price)}</div></div>
+      <div class="info"><div class="nm">${h(p.name)}</div><div class="un">dona</div><div class="pr num">${fmt(p.price)}<small>UZS</small></div></div>
       ${inCart[p.id] ? `<span class="inc">${inCart[p.id]}</span>` : ''}</button>`).join('')
     : `<div class="muted" style="grid-column:1/-1;text-align:center;padding:40px">Hech narsa topilmadi</div>`;
 }
 
-/** Shu rejimdagi boshqa ochiq buyurtmalar (tezda o'tish uchun). */
-let stripOrders = [];
-async function renderStrip() {
-  const el = $('#strip');
-  if (!el) return;
-  const o = cur();
-  stripOrders = (await openOrders()).filter(x => x.uuid !== o.uuid && (o.type === 'table' ? x.type === 'table' && x.table_id === o.table_id : o.type === 'delivery' ? x.type === 'delivery' : (x.type === 'takeaway' || x.type === 'phone')));
-  if (!$('#strip')) return;
-  $('#strip').innerHTML = stripOrders.map(x => `<button class="schip" data-open="${x.uuid}">#${h(x.number)}${x.type === 'table' && x.bill_no > 1 ? ' · Hisob-' + x.bill_no : ''} · <b class="num">${fmt(orderTotal(x))}</b></button>`).join('');
+/** Hisob-1..4 tablari: stolda — shu stolning hisoblari; olib ketish/yetkazishda — parallel tasdiqlanmagan buyurtmalar. */
+async function refreshBills() {
+  const o = UI.cur;
+  if (!o || UI.view !== 'sale') return;
+  const open = await openOrders();
+  const dr = (await drafts()).filter(d => d.items.length);
+  const same = (x) => x.uuid !== o.uuid && (o.type === 'table'
+    ? x.type === 'table' && x.table_id === o.table_id
+    : o.status === 'draft' && x.status === 'draft' && sameKind(x.type, o.type));
+  const others = [...open, ...dr].filter(same);
+  if (UI.cur !== o) return;
+  UI.billMap = {};
+  for (const x of others) UI.billMap[x.bill_no || 1] = x;
+  const bn = o.bill_no || 1;
+  $$('#order .bill').forEach(b => b.classList.toggle('has', Number(b.dataset.bill) === bn ? o.items.length > 0 : !!UI.billMap[b.dataset.bill]));
+  const el = $('#onums');
+  if (el) {
+    const nums = [...others.filter(x => o.type === 'table'), o].filter(x => x.number).sort((a, b) => (a.bill_no || 1) - (b.bill_no || 1)).map(x => x.number);
+    el.innerHTML = nums.length ? 'Buyurtma: ' + nums.map(n => `<i>${h(n)}</i>`).join('') : '';
+    el.classList.toggle('hidden', !nums.length);
+  }
 }
 
-function orderTitle(o) {
-  if (o.status === 'draft' && !o.number) return 'Yangi buyurtma';
-  return `Buyurtma #${o.number || '—'}`;
+async function switchBill(n) {
+  const o = cur();
+  if ((o.bill_no || 1) === n) return;
+  if (o.type !== 'table' && o.status !== 'draft') return;
+  await persistCur();
+  await refreshBills();
+  if (UI.cur !== o) return;
+  UI.cur = UI.billMap[n] || newDraft(o.type, o.type === 'table' ? { table_id: o.table_id, bill_no: n } : { bill_no: n });
+  UI.sel = null;
+  renderOrderPanel(); renderProducts(); refreshBills();
+}
+
+function statusBadge(o) {
+  return { draft: '<span class="st">Tasdiqlanmagan</span>', accepted: '<span class="st yellow">Ochiq</span>', done: '<span class="st green">To\'langan</span>', cancelled: '<span class="st red">Bekor</span>' }[o.status] || '';
 }
 
 function renderOrderPanel() {
@@ -432,38 +580,50 @@ function renderOrderPanel() {
   const total = orderTotal(o);
   const unsent = unsentLines(o).length;
   const locked = o.status === 'done' || o.status === 'cancelled';
-  const typeChip = o.type === 'table'
-    ? `<button class="chip btn type" data-m="table" ${o.status === 'draft' ? '' : 'disabled'}>🍽 <b>${o.table_id ? h(tableName(o.table_id)) : 'Stol tanlang'}</b>${o.bill_no > 1 ? ' · Hisob-' + o.bill_no : ''}</button>`
-    : `<span class="chip type">${o.type === 'delivery' ? '🛵 <b>Yetkazish</b>' : '🛍 <b>Olib ketish</b>'}</span>`;
-  const custChip = o.type !== 'table' ? `<button class="chip btn" data-m="cust">👤 <b>${h(o.customer_name || o.phone || 'Mijoz (ixtiyoriy)')}</b></button>` : '';
-  const addrChip = o.type === 'delivery' ? `<button class="chip btn" data-m="cust">📍 <b>${h(o.address ? o.address.slice(0, 26) : 'Manzil (ixtiyoriy)')}</b></button>` : '';
+  const isDraft = o.status === 'draft';
+  const bn = o.bill_no || 1;
+  const t = o.type === 'table' ? tableById(o.table_id) : null;
+  let title;
+  if (o.type === 'table') title = `<span class="hash">#</span><b>${h(tableNo(t))}</b>${t && zoneOf(t) ? ' - ' + h(zoneOf(t)) : (t ? '' : ' Stol tanlanmagan')}`;
+  else if (isDraft && !o.number) title = 'Yangi buyurtma';
+  else title = o.type === 'delivery' ? 'Yetkazish' : 'Olib ketish';
+  const showCust = o.type === 'delivery' || o.phone || o.customer_name;
   box.innerHTML = `
+    <div class="bills" id="bills">${[1, 2, 3, 4].map(n => `<button class="bill ${n === bn ? 'on' : ''}" data-bill="${n}" ${n !== bn && (locked || (o.type !== 'table' && !isDraft)) ? 'disabled' : ''}>Hisob-${n}</button>`).join('')}</div>
     <div class="order-head">
-      <div class="order-title"><h2>${h(orderTitle(o))}</h2>
-        <span class="tag">${o.status === 'draft' ? 'Tasdiqlanmagan' : o.status === 'accepted' ? '<span class="st yellow">Ochiq</span>' : o.status === 'done' ? '<span class="st green">To\'langan</span>' : '<span class="st red">Bekor</span>'}</span></div>
-      <div class="order-meta">
-        ${typeChip}${custChip}${addrChip}
-        ${o.comment ? `<button class="chip btn" data-m="note">💬 <b>${h(o.comment.slice(0, 30))}</b></button>` : ''}
-      </div>
+      <h2>${title}${locked ? statusBadge(o) : ''}</h2>
+      <div class="onums ${o.number ? '' : 'hidden'}" id="onums">${o.number ? `Buyurtma: <i>${h(o.number)}</i>` : ''}</div>
+      ${showCust ? `<button class="cust" data-m="cust"><b>${h(o.phone || 'Telefon kiritilmagan')}${o.customer_name ? ' · ' + h(o.customer_name) : ''}</b>${o.type === 'delivery' ? `<span>${h(o.address || 'Manzil kiritilmagan')}</span>` : ''}</button>` : ''}
+      ${o.comment ? `<button class="cmt-row" data-a="note0">💬 ${h(o.comment)}</button>` : ''}
     </div>
-    <div class="lines" id="lines">${o.items.length ? o.items.map(lineHtml).join('') : `<div class="empty"><div class="big">🍔</div><div>Mahsulotni tanlang</div></div>`}</div>
+    <div class="lhead"><span>Soni</span><span>Nomi</span><span>Narxi</span></div>
+    <div class="lines" id="lines">${o.items.length ? o.items.map(i => lineHtml(i, o)).join('') : `<div class="empty"><div>Chapdan mahsulot tanlang</div></div>`}</div>
     <div class="totals">
-      <div class="r"><span>Taomlar (${o.items.reduce((s, i) => s + i.qty, 0)} ta)</span><span class="num">${fmt(itemsTotal(o))}</span></div>
-      ${o.type === 'delivery' ? `<div class="r fee"><span>Yetkazish narxi <small class="muted">(ixtiyoriy)</small></span><input id="fee" class="fee-inp num" inputmode="numeric" placeholder="0" autocomplete="off" value="${o.delivery_fee ? o.delivery_fee : ''}" ${locked ? 'disabled' : ''}></div>` : ''}
+      <div class="r"><span>Tovarlar</span><span class="num">${fmt(itemsTotal(o))}</span></div>
+      ${o.type === 'delivery' ? `<div class="r fee"><span>Yetkazish</span><input id="fee" class="fee-inp num" inputmode="numeric" placeholder="0" autocomplete="off" value="${o.delivery_fee ? o.delivery_fee : ''}" ${locked ? 'disabled' : ''}></div>` : ''}
       ${paidTotal(o) ? `<div class="r"><span>To'langan</span><span class="num">${fmt(paidTotal(o))}</span></div>` : ''}
-      <div class="r grand"><span>JAMI</span><span class="num" id="grand-v">${fmt(total)}</span></div>
+      <div class="r grand"><span>Jami:</span><span class="num" id="grand-v">${fmt(total)}</span></div>
+    </div>
+    ${locked ? `<div class="order-actions"><button class="btn-x confirm" data-o="new">Yangi buyurtma</button><button class="btn-x ghost" data-a="rebill">${IC.receipt} Chek nusxasi</button></div>` : `
+    <div class="sbtns">
+      <button class="sbtn" data-a="note"><span>Izoh</span>${IC.comment}</button>
+      <button class="sbtn" data-a="type"><span>Tur</span>${IC.swap}</button>
+      <button class="sbtn ${o.bill_printed ? 'on' : ''}" data-a="bill" ${o.items.some(i => i.qty > 0) ? '' : 'disabled'}><span>Chek</span>${IC.receipt}</button>
+      <button class="sbtn dng" data-o="cancel" ${o.items.length || !isDraft ? '' : 'disabled'}><span>${isDraft ? 'Tozalash' : 'Bekor'}</span>${IC.x}</button>
     </div>
     <div class="order-actions">
-      ${locked ? `<button class="btn-x" data-o="new" style="grid-column:1/-1">＋ Yangi buyurtma</button>` : `
-      <button class="btn-x confirm" data-o="confirm" ${unsent ? '' : 'disabled'}>✓ Tasdiqlash${unsent && o.status !== 'draft' ? ' (+' + unsent + ')' : ''}</button>
-      <button class="btn-x danger" data-o="cancel" ${o.items.length || o.status !== 'draft' ? '' : 'disabled'}>${o.status === 'draft' ? 'Tozalash' : 'Bekor qilish'}</button>
-      <button class="btn-x pay" data-o="pay" id="pay-btn" ${total > 0 ? '' : 'disabled'}>💳 To'lov · <span class="num" id="pay-v">${fmt(total - paidTotal(o))}</span></button>`}
-    </div>`;
+      <button class="btn-x confirm" data-o="confirm" ${unsent ? '' : 'disabled'}>Tasdiqlash${unsent && !isDraft ? ' (+' + unsent + ')' : ''}</button>
+      ${o.type === 'table' ? `<button class="btn-x togo ${o.togo ? 'on' : ''}" data-a="togo" title="Taomlar olib ketishga tayyorlanadi"><span>Olib ketish</span>${IC.bag}</button>` : ''}
+      <button class="btn-x pay" data-o="pay" id="pay-btn" ${total > 0 ? '' : 'disabled'}>To'lash</button>
+    </div>`}`;
   box.onclick = (e) => {
-    const m = e.target.closest('[data-m]'); if (m && !m.disabled) return onAction(m.dataset.m === 'table' ? 'table' : m.dataset.m);
+    const bl = e.target.closest('[data-bill]'); if (bl) return bl.disabled ? null : switchBill(Number(bl.dataset.bill));
+    const m = e.target.closest('[data-m]'); if (m && !m.disabled) return onAction(m.dataset.m);
     const q = e.target.closest('[data-q]'); if (q) return changeQty(q.dataset.l, Number(q.dataset.q));
-    const ln = e.target.closest('.line'); if (ln) { UI.sel = ln.dataset.l; $$('#lines .line').forEach(x => x.classList.toggle('sel', x === ln)); return; }
-    const b = e.target.closest('[data-o]'); if (b) onOrderBtn(b.dataset.o);
+    const qn = e.target.closest('[data-qn]'); if (qn && !locked) { UI.sel = qn.dataset.qn; return onAction('qty'); }
+    const a = e.target.closest('[data-a]'); if (a) return onAction(a.dataset.a);
+    const b = e.target.closest('[data-o]'); if (b) return onOrderBtn(b.dataset.o);
+    const ln = e.target.closest('.line'); if (ln) { UI.sel = UI.sel === ln.dataset.l ? null : ln.dataset.l; $$('#lines .line').forEach(x => x.classList.toggle('sel', x.dataset.l === UI.sel)); }
   };
   // Yetkazish narxi: kassir o'zi yozadi (bo'sh yoki 0 — bepul). Yozayotganda panel qayta chizilmaydi.
   box.oninput = (e) => {
@@ -471,41 +631,57 @@ function renderOrderPanel() {
     const c = cur();
     c.delivery_fee = Math.min(10_000_000, parseInt(String(e.target.value).replace(/\D/g, '') || '0', 10));
     const g = $('#grand-v'); if (g) g.textContent = fmt(orderTotal(c));
-    const pv = $('#pay-v'); if (pv) pv.textContent = fmt(orderTotal(c) - paidTotal(c));
     const pb = $('#pay-btn'); if (pb) pb.disabled = orderTotal(c) <= 0;
     persistCur();
   };
   box.onchange = async (e) => { if (e.target.id === 'fee' && cur().status === 'accepted') await saveOrder(cur()); };
 }
 
-function lineHtml(i) {
+function lineHtml(i, o) {
   const unsent = i.qty - i.sent_qty;
+  const sub = [
+    unsent > 0 && o.status !== 'draft' ? `<span class="new">+${unsent} yangi</span>` : '',
+    i.cancelled_qty ? `<span class="cx">✕ ${i.cancelled_qty} bekor</span>` : '',
+    i.comment ? `<span>💬 ${h(i.comment)}</span>` : '',
+  ].join('');
   return `<div class="line ${UI.sel === i.uuid ? 'sel' : ''} ${i.qty === 0 ? 'cancelled' : ''}" data-l="${i.uuid}">
-    <div class="nm">${h(i.name)}</div><div class="sum num">${fmt(i.price * i.qty)}</div>
-    <div class="sub"><span class="num">${fmt(i.price)} × ${i.qty}</span>
-      ${i.sent_qty ? `<span class="sent">✓ ${i.sent_qty} oshxonada</span>` : ''}${unsent > 0 && i.sent_qty ? `<span class="new">+${unsent} yangi</span>` : ''}
-      ${i.cancelled_qty ? `<span style="color:var(--red)">✕ ${i.cancelled_qty} bekor</span>` : ''}</div>
-    <div class="qty"><button class="qbtn" data-l="${i.uuid}" data-q="-1">−</button><span class="q num">${i.qty}</span><button class="qbtn" data-l="${i.uuid}" data-q="1">+</button></div>
-    ${i.comment ? `<div class="cmt">💬 ${h(i.comment)}</div>` : ''}
+    <div class="qty"><button class="qbtn" data-l="${i.uuid}" data-q="-1">−</button><span class="q num" data-qn="${i.uuid}">${i.qty}</span><button class="qbtn" data-l="${i.uuid}" data-q="1">+</button></div>
+    <div class="nm"><div>${h(i.name)}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>
+    <div class="sum">${fmt(i.price * i.qty)}</div>
   </div>`;
 }
 
 async function persistCur() {
-  const o = cur();
+  const o = UI.cur;
+  if (!o) return;
   // Qoralama va tasdiqlanmagan o'zgarishlar faqat lokal saqlanadi (kompyuter o'chsa ham yo'qolmaydi)
   if (o.status === 'draft' && !o.items.length && !o.number) { await db.del('orders', o.uuid).catch(() => {}); return; }
   if (o.status === 'draft' || o.status === 'accepted') { o.updated_at = nowIso(); await db.put('orders', o); }
 }
 
-function refreshSale() { renderOrderPanel(); renderProducts(); persistCur().then(() => { renderStrip(); updateCounts(); }); }
+/** Mahsulot kartalaridagi "savatda nechta" belgisini yangilaydi (butun ro'yxat qayta chizilmaydi — tez ishlaydi). */
+function updateInc() {
+  const box = $('#prods'); if (!box) return;
+  const inCart = {};
+  cur().items.forEach(i => { if (i.product_id) inCart[i.product_id] = (inCart[i.product_id] || 0) + i.qty; });
+  for (const el of box.children) {
+    const n = inCart[el.dataset.pid] || 0;
+    let b = el.querySelector('.inc');
+    if (!n) { if (b) b.remove(); continue; }
+    if (!b) { b = document.createElement('span'); b.className = 'inc'; el.append(b); }
+    if (b.textContent !== String(n)) b.textContent = n;
+  }
+}
+
+function refreshSale() { renderOrderPanel(); updateInc(); persistCur().then(() => { updateCounts(); refreshBills(); }); }
 
 function onProduct(pid) {
   const o = cur();
-  if (o.status === 'done' || o.status === 'cancelled') { UI.cur = newDraft(o.type === 'table' ? 'takeaway' : o.type); }
+  if (o.status === 'done' || o.status === 'cancelled') return toast('Bu buyurtma yopilgan', 'warn', '"Yangi buyurtma" ni bosing');
   const p = S.catalog.products.find(x => x.id === pid);
   if (!p || !p.available) return;
-  const line = addProduct(cur(), p);
-  UI.sel = line.uuid;
+  const line = addProduct(o, p);
+  UI.sel = null;
   beep(1200, 25, 0.05);
   refreshSale();
   const el = $(`#lines .line[data-l="${line.uuid}"]`); if (el) el.scrollIntoView({ block: 'nearest' });
@@ -513,9 +689,9 @@ function onProduct(pid) {
 
 async function changeQty(lineUuid, delta) {
   const o = cur();
+  if (o.status === 'done' || o.status === 'cancelled') return;
   const line = o.items.find(i => i.uuid === lineUuid);
   if (!line) return;
-  UI.sel = lineUuid;
   const r = setQty(o, line, line.qty + delta);
   if (r.needsCancel) return cancelLineFlow(o, line, r.needsCancel);
   refreshSale();
@@ -532,43 +708,139 @@ async function cancelLineFlow(o, line, qty) {
   printDoc('cancel', o, cancelDoc(o, c, ctx()), `Bekor: ${line.name}`);
 }
 
+/** Stol tanlash (buyurtma turini "Stolda" ga o'zgartirish yoki boshqa stolga ko'chirish). */
 function pickTable(o) {
   return new Promise(async res => {
-    const open = await openOrders();
+    const open = [...await openOrders(), ...(await drafts()).filter(d => d.items.length)].filter(x => x.type === 'table' && x.uuid !== o.uuid);
+    let picked = false;
+    const zones = [...new Set(S.catalog.tables.map(zoneOf))];
     const m = modal({
       title: 'Stolni tanlang', cls: 'wide',
-      body: `<div class="grid-tables">${S.catalog.tables.map(t => {
-        const bills = open.filter(x => x.type === 'table' && x.table_id === t.id);
-        return `<button class="tcard ${bills.length ? 'busy' : ''}" data-t="${t.id}"><div class="tn">${h(t.name)}</div><div class="ts">${bills.length ? bills.length + ' ta hisob' : "Bo'sh"}</div></button>`;
-      }).join('')}</div>`,
-      foot: null, onClose: () => res(),
+      body: zones.map(z => `<section class="zone" style="margin-bottom:10px"><h2 style="font-size:18px"><span class="hash">#</span>${h(z || 'Stollar')}</h2><div class="grid-tables">${S.catalog.tables.filter(t => zoneOf(t) === z).map(t => {
+        const bills = open.filter(x => x.table_id === t.id);
+        return `<button class="tcard ${bills.length ? 'busy' : 'free'}" style="min-height:76px" data-t="${t.id}"><div class="top"><div class="tn"><span class="hash">#</span>${h(tableNo(t))}</div></div><div class="ts">${bills.length ? bills.length + ' ta hisob' : "Bo'sh"}</div></button>`;
+      }).join('')}</div></section>`).join('') || '<div class="note">Stollar yo\'q. Admin panelda qo\'shing.</div>',
+      foot: null, onClose: () => res(picked),
     });
-    m.body.onclick = async (e) => {
+    m.body.onclick = (e) => {
       const b = e.target.closest('[data-t]'); if (!b) return;
       const tid = Number(b.dataset.t);
-      const bills = open.filter(x => x.type === 'table' && x.table_id === tid);
+      const used = open.filter(x => x.table_id === tid).map(x => x.bill_no || 1);
       o.table_id = tid;
-      o.bill_no = bills.length ? Math.max(...bills.map(x => x.bill_no || 1)) + 1 : 1;
+      o.bill_no = [1, 2, 3, 4].find(n => !used.includes(n)) || Math.max(...used) + 1;
+      picked = true;
       m.close();
     };
   });
 }
 
+/** "Tur": buyurtma turini o'zgartirish (stolda / olib ketish / yetkazish) yoki boshqa stolga ko'chirish. */
+function typeModal(o) {
+  const kind = o.type === 'table' ? 'table' : o.type === 'delivery' ? 'delivery' : 'takeaway';
+  const m = modal({
+    title: 'Buyurtma turi', cls: 'slim',
+    body: `<div class="type-grid">${[['table', 'table', 'Stolda'], ['takeaway', 'bag', 'Olib ketish'], ['delivery', 'moto', 'Yetkazish']].map(([k, i, l]) => `<button class="type-btn ${k === kind ? 'on' : ''}" data-ty="${k}">${IC[i]}<span>${l}</span></button>`).join('')}</div>
+      ${o.type === 'table' ? '<p class="muted" style="margin:12px 0 0;font-size:13px">Boshqa stolga ko\'chirish uchun «Stolda» ni bosing.</p>' : ''}`,
+    foot: null,
+  });
+  m.body.onclick = async (e) => {
+    const b = e.target.closest('[data-ty]'); if (!b) return;
+    const ty = b.dataset.ty;
+    m.close();
+    if (ty === 'table') {
+      if (!S.catalog.tables.length) return toast("Stollar yo'q", 'warn', 'Admin panel → Stollar');
+      if (!(await pickTable(o))) return;
+      o.type = 'table'; o.delivery_fee = 0;
+    } else {
+      if (ty === kind) return ty === 'delivery' ? deliveryModal(o, false).then(refreshSale) : null;
+      o.type = ty; o.table_id = null; o.bill_no = 1; o.togo = false;
+      if (ty === 'delivery') await deliveryModal(o, false);
+    }
+    if (o.status === 'accepted') await saveOrder(o); else await persistCur();
+    toast('Buyurtma turi: ' + TYPE_NAMES[o.type] + (o.type === 'table' ? ' — ' + tableName(o.table_id) : ''), 'info');
+    renderView();
+  };
+}
+
+// ---------- Mijoz: telefon, saqlangan manzillar ----------
+const phoneKey = (p) => { const d = String(p || '').replace(/\D/g, ''); return d.length >= 9 ? d.slice(-9) : ''; };
+function fmtPhone(v) {
+  let d = String(v || '').replace(/\D/g, '');
+  if (d.startsWith('998')) d = d.slice(3);
+  else if (d.length > 9 && d.slice(1, 4) === '998') d = d[0] + d.slice(4); // kursor prefiksdan oldin turib qolgan bo'lsa
+  d = d.slice(0, 9);
+  return ('+998 ' + [d.slice(0, 2), d.slice(2, 5), d.slice(5, 7), d.slice(7, 9)].filter(Boolean).join(' ')).trimEnd() + (d.length ? '' : ' ');
+}
+/** Shu telefon raqami bilan avval berilgan buyurtmalardagi manzillar (kassa va Telegram). */
+async function addressBook(phone) {
+  const k = phoneKey(phone);
+  if (!k) return { addrs: [], name: '' };
+  const all = [...await db.all('orders'), ...await db.all('tg')].filter(x => phoneKey(x.phone) === k)
+    .sort((a, b) => String(b.created_at).replace(' ', 'T').localeCompare(String(a.created_at).replace(' ', 'T')));
+  return { addrs: [...new Set(all.map(x => String(x.address || '').trim()).filter(Boolean))].slice(0, 4), name: all.find(x => x.customer_name)?.customer_name || '' };
+}
+
+/** Yetkazish buyurtmasi oynasi: telefon, saqlangan manzil yoki yangi manzil, izoh. Hammasi ixtiyoriy. */
+function deliveryModal(o, isNew) {
+  return new Promise(res => {
+    let saved = false;
+    const m = modal({
+      title: isNew ? 'Buyurtma yaratish — Yetkazish' : "Yetkazish ma'lumotlari", cls: 'slim',
+      body: `<div class="field"><label>Telefon raqami</label><div class="phone-row"><span class="flag"><i></i><i></i><i></i></span><input class="inp" id="c-phone" inputmode="tel" autocomplete="off" value="${h(fmtPhone(o.phone))}"></div></div>
+        <div class="field hidden" id="c-addrs-f"><label>Manzilni tanlang yoki qo'lda kiriting</label><div class="addr-list" id="c-addrs"></div></div>
+        <div class="field"><label>Manzil</label><textarea class="inp" id="c-addr" placeholder="Manzilni kiriting" style="height:60px" maxlength="255">${h(o.address)}</textarea></div>
+        <div class="field"><label>Mijoz ismi (ixtiyoriy)</label><input class="inp" id="c-name" maxlength="100" value="${h(o.customer_name)}"></div>
+        <div class="field" style="margin:0"><label>Izoh</label><textarea class="inp" id="c-cmt" placeholder="Izoh kiriting" style="height:60px" maxlength="250">${h(o.comment)}</textarea></div>`,
+      foot: `<button class="btn-x confirm" data-ok>Saqlash</button><button class="btn-x ghost" data-no>Orqaga</button>`,
+      onClose: () => res(saved),
+    });
+    m.foot.classList.add('split');
+    const ph = $('#c-phone', m.el), ad = $('#c-addr', m.el), nm = $('#c-name', m.el);
+    const lookup = async () => {
+      const { addrs, name } = await addressBook(ph.value);
+      if (!m.el.isConnected) return;
+      $('#c-addrs-f', m.el).classList.toggle('hidden', !addrs.length);
+      $('#c-addrs', m.el).innerHTML = addrs.map(a => `<button class="addr ${a === ad.value.trim() ? 'on' : ''}" data-addr="${h(a)}">${h(a)}</button>`).join('');
+      if (name && !nm.value.trim()) nm.value = name;
+    };
+    ph.oninput = () => { ph.value = fmtPhone(ph.value); lookup(); };
+    ph.onfocus = () => setTimeout(() => ph.setSelectionRange(ph.value.length, ph.value.length), 0);
+    ad.oninput = () => $$('.addr', m.el).forEach(x => x.classList.toggle('on', x.dataset.addr === ad.value.trim()));
+    m.body.onclick = (e) => {
+      const b = e.target.closest('[data-addr]'); if (!b) return;
+      ad.value = b.dataset.addr;
+      $$('.addr', m.el).forEach(x => x.classList.toggle('on', x === b));
+    };
+    m.foot.querySelector('[data-no]').onclick = () => m.close();
+    m.foot.querySelector('[data-ok]').onclick = () => {
+      o.phone = phoneKey(ph.value) ? fmtPhone(ph.value).trim() : (ph.value.replace(/\D/g, '').length > 3 ? ph.value.trim().slice(0, 20) : '');
+      o.address = ad.value.trim().slice(0, 255);
+      o.customer_name = nm.value.trim().slice(0, 100);
+      o.comment = $('#c-cmt', m.el).value.trim().slice(0, 250);
+      saved = true;
+      m.close();
+    };
+    if (o.phone) lookup();
+  });
+}
+
 function customerModal(o) {
+  if (o.type === 'delivery') return deliveryModal(o, false).then(async ok => { if (ok && o.status === 'accepted') await saveOrder(o); refreshSale(); });
   return new Promise(res => {
     const m = modal({
-      title: 'Mijoz ma\'lumotlari',
-      body: `<div class="row2"><div class="field"><label>Telefon</label><input class="inp" id="c-phone" inputmode="tel" value="${h(o.phone)}" placeholder="+998 __ ___ __ __"></div>
-        <div class="field"><label>Ismi</label><input class="inp" id="c-name" value="${h(o.customer_name)}"></div></div>
-        ${o.type === 'delivery' ? `<div class="field"><label>Yetkazish manzili</label><textarea class="inp" id="c-addr">${h(o.address)}</textarea></div>
-` : ''}`,
+      title: 'Mijoz ma\'lumotlari', cls: 'slim',
+      body: `<div class="field"><label>Telefon</label><div class="phone-row"><span class="flag"><i></i><i></i><i></i></span><input class="inp" id="c-phone" inputmode="tel" autocomplete="off" value="${h(fmtPhone(o.phone))}"></div></div>
+        <div class="field" style="margin:0"><label>Ismi</label><input class="inp" id="c-name" maxlength="100" value="${h(o.customer_name)}"></div>`,
       foot: `<button class="btn-x confirm" data-ok>Saqlash</button>`, onClose: () => res(),
     });
-    m.foot.querySelector('[data-ok]').onclick = () => {
-      o.phone = $('#c-phone').value.trim().slice(0, 20);
-      o.customer_name = $('#c-name').value.trim().slice(0, 100);
-      if (o.type === 'delivery') { o.address = $('#c-addr').value.trim().slice(0, 255); }
+    const ph = $('#c-phone', m.el);
+    ph.oninput = () => { ph.value = fmtPhone(ph.value); };
+    ph.onfocus = () => setTimeout(() => ph.setSelectionRange(ph.value.length, ph.value.length), 0);
+    m.foot.querySelector('[data-ok]').onclick = async () => {
+      o.phone = phoneKey(ph.value) ? fmtPhone(ph.value).trim() : '';
+      o.customer_name = $('#c-name', m.el).value.trim().slice(0, 100);
       m.close();
+      if (o.status === 'accepted') await saveOrder(o);
       refreshSale();
     };
   });
@@ -578,12 +850,16 @@ async function onAction(a) {
   const o = cur();
   const line = o.items.find(i => i.uuid === UI.sel);
   switch (a) {
-    case 'new': return newOrder();
-    case 'table': return o.status === 'draft' ? pickTable(o).then(refreshSale) : null;
     case 'cust': return customerModal(o);
+    case 'type': return typeModal(o);
+    case 'togo': {
+      o.togo = !o.togo;
+      toast(o.togo ? 'Olib ketishga: oshxona chekida belgilanadi' : 'Olib ketish belgisi olib tashlandi', 'info');
+      return refreshSale();
+    }
     case 'qty': {
-      if (!line) return toast('Avval taomni tanlang', 'warn');
-      const v = await promptBox('Miqdor', line.name, { value: String(line.qty) });
+      if (!line) return;
+      const v = await promptBox('Miqdor', line.name, { value: String(line.qty), numeric: true });
       if (v === null) return;
       const n = parseInt(v, 10);
       if (!(n >= 0)) return;
@@ -591,30 +867,18 @@ async function onAction(a) {
       if (r.needsCancel) return cancelLineFlow(o, line, r.needsCancel);
       return refreshSale();
     }
-    case 'del': {
-      if (!line) return toast('Avval taomni tanlang', 'warn');
-      if (line.qty > line.sent_qty) {
-        // Oshxonaga yuborilmagan qismi oddiy o'chiriladi (bekor qilish cheki chiqmaydi)
-        setQty(o, line, line.sent_qty);
-        if (!o.items.includes(line)) UI.sel = null;
-        return refreshSale();
-      }
-      if (line.sent_qty > 0) return cancelLineFlow(o, line, line.sent_qty);
-      return refreshSale();
-    }
+    case 'note0':
     case 'note': {
-      if (line) {
+      if (line && a === 'note') {
         const v = await promptBox('Taom izohi', line.name, { value: line.comment, required: false, presets: ['Piyozsiz', 'Achchiq', 'Sousiz', 'Ikki marta pishloq'] });
         if (v === null) return;
-        if (line.sent_qty > 0 && v !== line.comment) {
-          // Yuborilgan taomga izoh: yangi qator sifatida emas, keyingi chekda chiqishi uchun alohida qator
-          return toast("Oshxonaga yuborilgan taom izohini o'zgartirib bo'lmaydi. Buyurtma izohidan foydalaning.", 'warn');
-        }
+        if (line.sent_qty > 0 && v !== line.comment) return toast("Oshxonaga yuborilgan taom izohini o'zgartirib bo'lmaydi. Buyurtma izohidan foydalaning.", 'warn');
         line.comment = v;
       } else {
-        const v = await promptBox('Buyurtma izohi', 'Oshxona chekida chiqadi', { value: o.comment, required: false, textarea: true });
+        const v = await promptBox('Buyurtma izohi', 'Oshxona chekida chiqadi. Bitta taomga izoh: avval taomni bosib tanlang.', { value: o.comment, required: false, textarea: true });
         if (v === null) return;
         o.comment = v;
+        if (o.status === 'accepted') await saveOrder(o);
       }
       return refreshSale();
     }
@@ -622,34 +886,26 @@ async function onAction(a) {
       if (!o.items.some(i => i.qty > 0)) return toast("Buyurtmada taom yo'q", 'warn');
       const d = customerDoc({ ...o, payments: [] }, ctx());
       d.lines.unshift({ t: "HISOB (to'lanmagan)", align: 'c', b: true });
-      return printDoc('customer', o, d, 'Hisob cheki');
+      await printDoc('customer', o, d, 'Hisob cheki');
+      if (o.status === 'accepted') { o.bill_printed = true; await db.put('orders', o); renderOrderPanel(); refreshBills(); }
+      return;
     }
+    case 'rebill': return printDoc('customer', o, customerDoc(o, ctx()), 'Mijoz cheki (nusxa)');
   }
-}
-
-async function newOrder() {
-  const o = UI.cur;
-  if (o && o.status === 'draft' && o.items.length) {
-    if (!(await confirmBox('Yangi buyurtma', 'Joriy buyurtma tasdiqlanmagan. U o\'chiriladimi?', "O'chirish", true))) return;
-    await db.del('orders', o.uuid);
-  }
-  if (o && o.status === 'accepted' && unsentLines(o).length) {
-    if (!(await confirmBox('Tasdiqlanmagan taomlar', "Bu hisobda oshxonaga yuborilmagan taomlar bor. Ular hisobda saqlanib qoladi (oshxonaga ketmaydi). Davom etasizmi?", 'Davom etish'))) return;
-  }
-  nextAfterClose(o ? o.type : 'takeaway');
-  renderView();
 }
 
 async function onOrderBtn(b) {
   const o = cur();
-  if (b === 'new') return newOrder();
+  if (b === 'new') return backToList(o.type);
   if (b === 'confirm') return doConfirm(o);
   if (b === 'pay') return payModal(o);
   if (b === 'cancel') {
     if (o.status === 'draft') {
+      if (!o.items.length) return;
       if (!(await confirmBox('Tozalash', 'Buyurtmadagi barcha taomlar olib tashlansinmi?', 'Tozalash', true))) return;
       await db.del('orders', o.uuid);
-      UI.cur = newDraft(o.type, o.type === 'table' ? { table_id: o.table_id } : {});
+      UI.cur = newDraft(o.type, { bill_no: o.bill_no || 1, ...(o.type === 'table' ? { table_id: o.table_id } : { phone: o.phone, address: o.address, customer_name: o.customer_name }) });
+      UI.sel = null;
       return renderView();
     }
     return cancelOrderFlow(o);
@@ -657,28 +913,37 @@ async function onOrderBtn(b) {
 }
 
 function validateBeforeConfirm(o) {
-  // Telefon va manzil so'ralmaydi (ixtiyoriy). Faqat stol buyurtmasida stol tanlangan bo'lishi kerak.
+  // Telefon va manzil majburiy emas. Faqat stol buyurtmasida stol tanlangan bo'lishi kerak.
   if (o.type === 'table' && !o.table_id) return 'Stolni tanlang';
   return '';
 }
 
+/** Oshxona cheki uchun buyurtma: "Olib ketish" belgisi izohga qo'shiladi. */
+const kitchenOrder = (o) => (o.togo ? { ...o, comment: 'OLIB KETISHGA' + (o.comment ? ' · ' + o.comment : '') } : o);
+
 async function doConfirm(o, silent = false) {
   const err = validateBeforeConfirm(o);
-  if (err) { toast(err, 'warn'); await pickTable(o); refreshSale(); return false; }
+  if (err) { toast(err, 'warn'); if (await pickTable(o)) refreshSale(); return false; }
+  if (o.type !== 'table') o.bill_no = 1;
   let res;
-  try { res = await confirmOrder(o); } catch (e) { toast(e.message, 'bad'); return false; }
-  if (!silent) toast('Buyurtma tasdiqlandi', 'ok', `#${o.number} saqlandi`);
+  try {
+    if (unsentLines(o).length) o.bill_printed = false;
+    res = await confirmOrder(o);
+  } catch (e) { toast(e.message, 'bad'); return false; }
   if (res.delta.length && S.catalog.settings.kitchen_auto) {
-    printDoc('kitchen', o, kitchenDoc(o, res.delta, { ...ctx(), isAddition: res.isAddition }), 'Oshxona cheki', S.catalog.settings.kitchen_copies);
+    printDoc('kitchen', o, kitchenDoc(kitchenOrder(o), res.delta, { ...ctx(), isAddition: res.isAddition }), 'Oshxona cheki', S.catalog.settings.kitchen_copies, uuid(), true);
   }
-  refreshSale();
+  if (!silent) {
+    toast(res.isAddition ? `#${o.number}: qo'shimcha taomlar oshxonaga yuborildi` : `Buyurtma #${o.number} tasdiqlandi`, 'ok', res.delta.length ? 'Oshxona cheki chiqarildi' : '');
+    refreshSale(); renderView();
+  }
   return true;
 }
 
 async function cancelOrderFlow(o) {
+  if (paidTotal(o) > 0) return toast("To'langan buyurtmani bekor qilib bo'lmaydi", 'bad');
   const reason = await promptBox('Buyurtmani bekor qilish', `#${o.number} — bekor qilish sababi (tarixda saqlanadi):`, { presets: CANCEL_REASONS });
   if (!reason) return;
-  if (paidTotal(o) > 0) return toast("To'langan buyurtmani bekor qilib bo'lmaydi", 'bad');
   const cancels = await cancelWholeOrder(o, reason);
   toast(`#${o.number} bekor qilindi`, 'warn');
   if (cancels.length) {
@@ -686,78 +951,74 @@ async function cancelOrderFlow(o) {
       ...cancels.map(c => ({ t: `${c.qty} x ${c.name}`, b: true, s: 2 })), { type: 'sep' }, { t: 'Sabab: ' + reason, b: true }, { type: 'lr', l: dt(nowIso()), r: S.employee.name }] };
     printDoc('cancel', o, doc, 'Bekor qilish cheki');
   }
-  nextAfterClose(o.type);
-  renderView();
+  backToList(o.type);
 }
 
-// ---------- To'lov ----------
+// ---------- To'lov (to'liq ekran) ----------
+const PAY_NAME = { cash: 'Naqd', terminal: 'Terminal', click: 'Click' };
+
 function payModal(o, { onDone = null, total: forcedTotal = null, title = null } = {}) {
   const total = forcedTotal ?? (orderTotal(o) - paidTotal(o));
-  const methods = (S.catalog.settings.pay_methods || ['cash', 'terminal', 'click']);
-  const ICON = { cash: '💵', terminal: '💳', click: '📱' };
-  let method = methods[0] || 'cash';
-  let lines = [];
-  let input = '';
-  const remaining = () => total - lines.reduce((s, l) => s + l.amount, 0);
+  const methods = (S.catalog.settings.pay_methods || ['cash', 'terminal', 'click']).filter(k => PAY_NAME[k]);
+  if (!methods.length) methods.push('cash');
+  const amt = {};
+  methods.forEach(k => { amt[k] = 0; });
+  let active = null, fresh = true;
+  const sum = () => methods.reduce((s, k) => s + amt[k], 0);
   return new Promise(res => {
     let finished = false;
+    const onKey = (e) => {
+      if (/^\d$/.test(e.key)) key(e.key);
+      else if (e.key === 'Backspace' || e.key === 'Delete') key('AC');
+      else if (e.key === 'Enter') { e.preventDefault(); submit(); }
+      else if (e.key === 'Escape') m.close();
+    };
     const m = modal({
-      title: title || `To'lov — #${o.number || 'yangi'}`, cls: 'wide',
-      body: `<div class="pay-grid"><div>
-          <div class="muted">To'lanadigan summa</div><div class="pay-total num">${som(total)}</div>
-          <div class="methods">${methods.map(k => `<button class="method" data-m="${k}"><span class="mi">${ICON[k]}</span>${payLabel(k).replace(' (karta)', '')}</button>`).join('')}</div>
-          <div class="field"><label id="amt-l">Summa</label><input class="inp amount-inp num" id="amt" inputmode="numeric" data-no-focus="1" readonly></div>
-          <div class="quick" id="quick"></div>
-          <div class="paylines" id="plines"></div>
-          <div style="margin-top:10px;display:flex;justify-content:space-between"><span class="muted">Qoldiq:</span><b class="num" id="rem"></b></div>
-          <div style="display:flex;justify-content:space-between"><span class="muted">Qaytim:</span><span class="change num" id="chg">0</span></div>
-        </div>
-        <div><div class="keypad" id="kp">${[1, 2, 3, 4, 5, 6, 7, 8, 9, '00', 0, '⌫'].map(k => `<button data-k="${k}">${k}</button>`).join('')}</div>
-          <button class="btn-x" id="addline" style="width:100%;margin-top:8px">＋ Aralash: shu summani qo'shish</button></div></div>`,
-      foot: `<button class="btn-x ghost" data-x2>Bekor</button><button class="btn-x pay" style="min-width:260px" id="payok">✓ To'lovni tasdiqlash</button>`,
-      onClose: () => { if (!finished) res(false); },
+      bare: true, cls: 'payfull', ovCls: 'payov',
+      body: `<div class="pay-top"><button class="back" data-x2>Orqaga</button><button class="go" id="payok">To'lash</button></div>
+        <div class="pay-sums"><div><div class="l">Jami:</div><div class="v num" id="pay-total">${fmt(total)} UZS</div></div>
+          <div class="due" id="due"><div class="l" id="due-l">To'lovga:</div><div class="v num" id="due-v"></div></div></div>
+        <div class="pay-grid"><div class="pay-left">
+            <div class="prow ord"><span class="pi">${IC.cart}</span><div class="pn">${h(title || 'Buyurtma ' + (o.number ? '#' + o.number : '(yangi)'))}</div><span></span></div>
+            ${methods.map(k => `<div class="prow" data-m="${k}"><span class="pi">${IC.cash}</span><div><div class="pn">${PAY_NAME[k]}</div><div class="pv num" data-v="${k}">0 UZS</div></div><button class="plus" data-plus="${k}" title="Qolgan summani shu turga yozish">+</button></div>`).join('')}
+            <div class="pay-hint">«+» — qolgan summani shu to'lov turiga yozadi. Boshqa summa (masalan, mijoz bergan naqd yoki aralash to'lov) uchun turni bosib, raqamlarni tering.</div>
+          </div>
+          <div class="keypad" id="kp">${[7, 8, 9, 4, 5, 6, 1, 2, 3, 0, '000', 'AC'].map(k => `<button data-k="${k}">${k}</button>`).join('')}</div></div>`,
+      foot: null,
+      onClose: () => { document.removeEventListener('keydown', onKey); if (!finished) res(false); },
     });
     const draw = () => {
-      $$('.method', m.el).forEach(b => b.classList.toggle('on', b.dataset.m === method));
-      const rem = remaining();
-      $('#amt', m.el).value = input ? fmt(parseInt(input, 10)) : fmt(Math.max(0, rem));
-      $('#amt-l', m.el).textContent = method === 'cash' ? 'Mijoz bergan naqd' : payLabel(method) + ' summasi';
-      $('#rem', m.el).textContent = fmt(Math.max(0, rem));
-      const cur = input ? parseInt(input, 10) : Math.max(0, rem);
-      $('#chg', m.el).textContent = method === 'cash' && cur > rem ? fmt(cur - rem) : '0';
-      $('#plines', m.el).innerHTML = lines.map((l, i) => `<div class="payline"><span>${payLabel(l.method)}</span><span><b class="num">${fmt(l.amount)}</b> <button data-rm="${i}" style="margin-left:8px;color:var(--red)">✕</button></span></div>`).join('');
-      const q = method === 'cash' ? [...new Set([rem, Math.ceil(rem / 10000) * 10000, Math.ceil(rem / 50000) * 50000, Math.ceil(rem / 100000) * 100000].filter(x => x > 0))].slice(0, 4) : [];
-      $('#quick', m.el).innerHTML = q.map(x => `<button data-qv="${x}">${fmt(x)}</button>`).join('');
+      for (const k of methods) {
+        const row = $(`.prow[data-m="${k}"]`, m.el);
+        row.classList.toggle('on', active === k);
+        row.classList.toggle('has', amt[k] > 0);
+        $(`[data-v="${k}"]`, m.el).textContent = fmt(amt[k]) + ' UZS';
+      }
+      const rem = total - sum();
+      $('#due', m.el).classList.toggle('chg', rem < 0);
+      $('#due-l', m.el).textContent = rem < 0 ? 'Qaytim:' : "To'lovga:";
+      $('#due-v', m.el).textContent = fmt(Math.abs(rem)) + ' UZS';
     };
-    m.el.onclick = (e) => {
-      const mb = e.target.closest('[data-m]'); if (mb) { method = mb.dataset.m; input = ''; draw(); return; }
-      const k = e.target.closest('[data-k]');
-      if (k) { const v = k.dataset.k; input = v === '⌫' ? input.slice(0, -1) : (input + v).replace(/^0+/, '').slice(0, 10); draw(); return; }
-      const qv = e.target.closest('[data-qv]'); if (qv) { input = qv.dataset.qv; draw(); return; }
-      const rm = e.target.closest('[data-rm]'); if (rm) { lines.splice(Number(rm.dataset.rm), 1); draw(); return; }
-    };
-    $('#addline', m.el).onclick = () => {
-      const amt = input ? parseInt(input, 10) : 0;
-      const rem = remaining();
-      if (!amt || amt <= 0) return toast('Summani kiriting', 'warn');
-      if (amt >= rem && method !== 'cash') return toast("Bu summa qoldiqni to'liq yopadi — to'g'ridan-to'g'ri tasdiqlang", 'info');
-      lines.push({ method, amount: method === 'cash' ? amt : Math.min(amt, rem) });
-      input = '';
-      method = methods.find(x => x !== method) || method;
+    const key = (v) => {
+      if (!active) active = methods.includes('cash') ? 'cash' : methods[0];
+      if (v === 'AC') amt[active] = 0;
+      else amt[active] = parseInt(((fresh ? '' : String(amt[active] || '')) + v).replace(/^0+/, '').slice(0, 9) || '0', 10);
+      fresh = false;
       draw();
     };
-    m.foot.querySelector('[data-x2]').onclick = () => m.close();
-    $('#payok', m.el).onclick = async () => {
-      const rem = remaining();
-      const amt = input ? parseInt(input, 10) : Math.max(0, rem);
-      const all = [...lines];
-      if (rem > 0) {
-        if (amt < rem && method === 'cash') return toast(`Naqd yetarli emas: yana ${fmt(rem - amt)} kerak`, 'bad');
-        all.push({ method, amount: method === 'cash' ? amt : rem });
-      }
+    const submit = async () => {
+      const s = sum();
+      if (s <= 0) return toast("To'lov turini tanlang", 'warn', 'Kerakli tur yonidagi «+» ni bosing');
+      if (s < total) return toast(`To'lov yetarli emas: yana ${fmt(total - s)} UZS kerak`, 'bad');
+      const cash = amt.cash || 0;
+      if (s - cash > total) return toast('Karta/Click summasi jamidan oshib ketdi', 'bad', "Qaytim faqat naqd puldan beriladi");
+      if (cash > 0 && s - cash >= total) return toast("Naqd summa ortiqcha", 'bad', "Karta/Click to'lovi jamini to'liq yopgan");
       // Naqd har doim oxirida: qaytim faqat naqddan beriladi
-      all.sort((a, b) => (a.method === 'cash') - (b.method === 'cash'));
-      const btn = $('#payok', m.el); btn.disabled = true;
+      const all = methods.filter(k => k !== 'cash' && amt[k] > 0).map(k => ({ method: k, amount: amt[k] }));
+      if (cash > 0) all.push({ method: 'cash', amount: cash });
+      const btn = $('#payok', m.el);
+      if (btn.disabled) return;
+      btn.disabled = true;
       try {
         if (onDone) await onDone(all);
         else await completePayment(o, all);
@@ -766,6 +1027,17 @@ function payModal(o, { onDone = null, total: forcedTotal = null, title = null } 
         m.close();
       } catch (e) { toast(e.message || String(e), 'bad'); btn.disabled = false; }
     };
+    m.el.onclick = (e) => {
+      if (e.target.closest('[data-x2]')) return m.close();
+      if (e.target.closest('#payok')) return submit();
+      const pl = e.target.closest('[data-plus]');
+      if (pl) { active = pl.dataset.plus; amt[active] = Math.max(0, total - (sum() - amt[active])); fresh = true; return draw(); }
+      const row = e.target.closest('.prow[data-m]');
+      if (row) { active = row.dataset.m; fresh = true; return draw(); }
+      const k = e.target.closest('[data-k]');
+      if (k) key(k.dataset.k);
+    };
+    document.addEventListener('keydown', onKey);
     draw();
   });
 }
@@ -777,10 +1049,9 @@ async function completePayment(o, payLines) {
   }
   await payOrder(o, payLines);
   const change = o.payments.reduce((s, p) => s + (p.change || 0), 0);
-  toast("To'lov qabul qilindi", 'ok', change ? `Qaytim: ${som(change)}` : `#${o.number} yopildi`, change ? 8000 : 3200);
-  if (S.catalog.settings.customer_auto) printDoc('customer', o, customerDoc(o, ctx()), 'Mijoz cheki', S.catalog.settings.customer_copies);
-  nextAfterClose(o.type);
-  renderView();
+  toast("To'lov qabul qilindi", 'ok', change ? `Qaytim: ${fmt(change)} UZS` : `#${o.number} yopildi`, change ? 8000 : 3200);
+  if (S.catalog.settings.customer_auto) printDoc('customer', o, customerDoc(o, ctx()), 'Mijoz cheki', S.catalog.settings.customer_copies, uuid(), true);
+  backToList(o.type);
 }
 
 // ====================================================================
@@ -789,13 +1060,14 @@ async function completePayment(o, payLines) {
 function ctx() {
   const st = S.catalog.settings;
   return { brand: st.brand_name || 'ADI BURGER', address: st.brand_address, phone: st.brand_phone, footer: st.receipt_footer, tables: S.catalog.tables, cashier: S.employee?.name || '',
-    design: S.catalog.receipt?.design || null, logo: S.catalog.receipt?.logo || null };
+    design: S.catalog.receipt?.design || null, logo: S.catalog.receipt?.logo || null, base: new URL('../', location.href).href };
 }
 
-async function printDoc(kind, o, doc, title, copies = 1, id = uuid()) {
+/** quiet: muvaffaqiyatli yuborilganda xabar chiqarilmaydi (xato har doim ko'rsatiladi). */
+async function printDoc(kind, o, doc, title, copies = 1, id = uuid(), quiet = false) {
   const rec = await agent.print({ id, kind, orderUuid: o?.uuid || null, orderRef: o ? '#' + o.number : '', title, doc, copies });
   if (rec && (rec.status === 'agent_down' || rec.status === 'error')) toast(`${title} chiqmadi`, 'bad', rec.error, 7000);
-  else toast(`${title} printerga yuborildi`, 'info', '', 2200);
+  else if (!quiet) toast(`${title} printerga yuborildi`, 'info', '', 2200);
   return rec;
 }
 
@@ -821,30 +1093,95 @@ async function pollPrintsLoop() {
 }
 
 // ====================================================================
-// STOLLAR
+// STOLLAR (zallar bo'yicha)
 // ====================================================================
 async function viewTables(v) {
-  const open = await openOrders();
-  v.innerHTML = `<div class="page"><div class="page-head"><h1>Stollar</h1><span class="muted">Band stol sariq. Stolni bosing — hisob ochiladi.</span></div>
-    <div class="grid-tables" id="tg">${S.catalog.tables.map(t => {
-      const bills = open.filter(o => o.type === 'table' && o.table_id === t.id);
-      const sum = bills.reduce((s, o) => s + orderTotal(o), 0);
-      return `<button class="tcard ${bills.length ? 'busy' : ''}" data-t="${t.id}"><div class="tn">${h(t.name)}</div>
-        <div>${bills.length ? `<div class="tsum num">${fmt(sum)}</div><div class="ts">${bills.length} ta hisob · ${dt(bills[0].created_at, false)} dan</div>` : `<div class="ts">Bo'sh</div>`}</div></button>`;
-    }).join('')}</div></div>`;
-  $('#tg').onclick = async (e) => {
+  const open = (await openOrders()).filter(o => o.type === 'table');
+  const dr = (await drafts()).filter(d => d.type === 'table' && d.items.length);
+  if (UI.view !== 'tables') return;
+  const map = {};
+  for (const o of [...open, ...dr]) (map[o.table_id] = map[o.table_id] || []).push(o);
+  for (const k in map) map[k].sort((a, b) => (a.bill_no || 1) - (b.bill_no || 1));
+  const tables = S.catalog.tables;
+  const zones = [...new Set(tables.map(zoneOf))];
+  const named = zones.filter(Boolean);
+  if (UI.zone !== 'all' && !zones.includes(UI.zone)) UI.zone = 'all';
+  const busyN = (z) => tables.filter(t => zoneOf(t) === z && (map[t.id] || []).some(o => o.status === 'accepted')).length;
+  const card = (t) => {
+    const bills = map[t.id] || [];
+    const head = `<div class="tn"><span class="hash">#</span>${h(tableNo(t))}</div>`;
+    if (!bills.length) return `<button class="tcard free" data-t="${t.id}"><div class="top">${head}</div><div class="meta"></div><div class="ts">Bo'sh</div></button>`;
+    const real = bills.filter(o => o.status === 'accepted');
+    const sum = bills.reduce((s, o) => s + orderTotal(o), 0);
+    const cls = !real.length ? 'draft' : real.every(o => o.bill_printed && !unsentLines(o).length) ? 'billed' : 'busy';
+    const pill = cls === 'draft' ? 'Tasdiqlanmagan' : cls === 'billed' ? 'Chek berildi' : 'Buyurtma qabul qilinmoqda';
+    return `<button class="tcard ${cls}" data-t="${t.id}"><div class="top">${head}<div class="tsum num">${fmt(sum)}</div></div>
+      <div class="meta"><div>${IC.usr}${h(empName(bills[0].employee_id))}</div><div>${IC.clock}${dt(bills[0].created_at, false)}${bills.length > 1 ? ` · ${bills.length} ta hisob` : ''}</div></div>
+      <div class="pillx">${IC.clock}${pill}</div></button>`;
+  };
+  const show = zones.filter(z => UI.zone === 'all' || z === UI.zone);
+  v.innerHTML = `<div class="tv ${named.length ? '' : 'nozone'}"><aside class="side ${named.length ? '' : 'hidden'}" id="zones"><div class="sico">${IC.grid}</div>
+      <button class="cat ${UI.zone === 'all' ? 'on' : ''}" data-z="all">Hammasi</button>
+      ${named.map(z => `<button class="cat ${UI.zone === z ? 'on' : ''}" data-z="${h(z)}">${h(z)}${busyN(z) ? `<span class="badge">${busyN(z)}</span>` : ''}</button>`).join('')}</aside>
+    <div class="tmain" id="tg">${tables.length
+      ? show.map(z => `<section class="zone">${named.length ? `<h2><span class="hash">#</span>${h(z || 'Stollar')}</h2>` : ''}<div class="grid-tables">${tables.filter(t => zoneOf(t) === z).map(card).join('')}</div></section>`).join('')
+      : `<div class="note" style="margin:10px 0">Stollar yo'q. Admin panel → Stollar bo'limidan qo'shing (zal nomi bilan).</div>`}</div></div>`;
+  $('#zones').onclick = (e) => { const b = e.target.closest('[data-z]'); if (b) { UI.zone = b.dataset.z; renderView(); } };
+  $('#tg').onclick = (e) => {
     const b = e.target.closest('[data-t]'); if (!b) return;
     const tid = Number(b.dataset.t);
-    const bills = open.filter(o => o.type === 'table' && o.table_id === tid);
-    if (!bills.length) { UI.cur = newDraft('table', { table_id: tid }); UI.sel = null; return go('sale'); }
-    const m = modal({
-      title: tableName(tid),
-      body: `<div class="list">${bills.map(o => `<button class="ocard" data-o="${o.uuid}"><div class="no">Hisob-${o.bill_no}</div><div><div>#${h(o.number)} · ${o.items.reduce((s, i) => s + i.qty, 0)} ta taom</div><div class="sm">${dt(o.created_at, false)} dan ochiq</div></div><div class="amt num">${fmt(orderTotal(o))}</div></button>`).join('')}</div>`,
-      foot: `<button class="btn-x" data-new>＋ Yangi hisob (Hisob-${Math.max(...bills.map(x => x.bill_no || 1)) + 1})</button>`,
-    });
-    m.body.onclick = (ev) => { const ob = ev.target.closest('[data-o]'); if (!ob) return; UI.cur = bills.find(x => x.uuid === ob.dataset.o); UI.sel = null; m.close(); go('sale'); };
-    m.foot.querySelector('[data-new]').onclick = () => { UI.cur = newDraft('table', { table_id: tid, bill_no: Math.max(...bills.map(x => x.bill_no || 1)) + 1 }); m.close(); go('sale'); };
+    const bills = map[tid] || [];
+    openSale(bills[0] || newDraft('table', { table_id: tid }));
   };
+}
+
+// ====================================================================
+// OLIB KETISH / YETKAZISH — faol buyurtmalar kartalari (kassa va Telegram)
+// ====================================================================
+async function viewList(v) {
+  const type = UI.mode === 'delivery' ? 'delivery' : 'takeaway';
+  const mine = (o) => (type === 'delivery' ? o.type === 'delivery' : (o.type === 'takeaway' || o.type === 'phone'));
+  const open = (await openOrders()).filter(mine).reverse();
+  const dr = (await drafts()).filter(d => mine(d) && d.items.length).sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+  const tgAll = await db.all('tg');
+  if (UI.view !== 'list' || UI.mode !== type) return;
+  const tg = tgAll.filter(o => TG_ACTIVE.includes(o.status) && (type === 'delivery' ? o.type === 'delivery' : o.type !== 'delivery')).sort((a, b) => b.id - a.id);
+  // Ko'rilgan Telegram buyurtmalari uchun ovoz to'xtaydi
+  let seenChanged = false;
+  for (const o of tg) if (!o.seen) { o.seen = true; await db.put('tg', o); seenChanged = true; }
+  if (seenChanged) updateTgBadge();
+  const row = (ic, txt) => (txt ? `<div>${ic}<span>${h(txt)}</span></div>` : '');
+  const card = (o) => `<button class="ocard2" data-o="${o.uuid}"><div class="top"><div class="tn"><span class="hash">#</span>${h(o.number)}</div><div class="tsum num">${fmt(orderTotal(o))}</div></div>
+      <div class="meta">${row(IC.usr, empName(o.employee_id))}${row(IC.clock, dt(o.created_at, false))}${row(IC.pin, o.address)}${!o.address ? row(IC.usr, o.customer_name) : ''}</div>
+      <div class="pillx">${o.phone ? IC.phone + h(o.phone) : (unsentLines(o).length ? "Yuborilmagan taom bor" : `${o.items.reduce((s, i) => s + i.qty, 0)} ta taom`)}</div></button>`;
+  const draftCard = (o) => `<button class="ocard2 draft" data-o="${o.uuid}"><div class="top"><div class="tn">Hisob-${o.bill_no || 1}</div><div class="tsum num">${fmt(orderTotal(o))}</div></div>
+      <div class="meta">${row(IC.clock, dt(o.created_at, false))}${row(IC.pin, o.address)}<div>${o.items.reduce((s, i) => s + i.qty, 0)} ta taom</div></div>
+      <div class="pillx">Tasdiqlanmagan</div></button>`;
+  const tgCard = (o) => {
+    const [l] = TG_ST[o.status] || [o.status];
+    const pay = o.pay_status === 'paid' ? "To'langan" : o.receipt?.status === 'checking' ? 'Chekni tekshiring!' : "To'lanmagan";
+    return `<button class="ocard2 tg ${o.status === 'new' ? 'fresh' : ''}" data-tg="${o.uuid}"><div class="top"><div class="tn">${h(o.number)}</div><div class="tsum num">${fmt(o.total)}</div></div>
+      <div class="meta">${row(IC.tg, 'TELEGRAM')}${row(IC.clock, dt(o.created_at, false))}${row(IC.pin, o.address)}${row(IC.phone, o.phone)}</div>
+      <div class="pillx">${h(l)} · ${pay}</div></button>`;
+  };
+  v.innerHTML = `<div class="cards" id="cl">
+    <button class="ocard2 new" data-new><div class="plus">+</div><div class="pillx">yangi buyurtma</div></button>
+    ${tg.map(tgCard).join('')}${dr.map(draftCard).join('')}${open.map(card).join('')}</div>`;
+  $('#cl').onclick = (e) => {
+    if (e.target.closest('[data-new]')) return newInMode(type, dr);
+    const t = e.target.closest('[data-tg]'); if (t) return tgDetail(tg.find(x => x.uuid === t.dataset.tg));
+    const b = e.target.closest('[data-o]'); if (b) openSale([...open, ...dr].find(x => x.uuid === b.dataset.o));
+  };
+}
+
+/** "+ yangi buyurtma": bo'sh Hisob (1..4) ochiladi. Yetkazishda avval telefon/manzil oynasi chiqadi. */
+async function newInMode(type, dr) {
+  const used = dr.map(d => d.bill_no || 1);
+  const slot = [1, 2, 3, 4].find(n => !used.includes(n));
+  if (!slot) { toast('4 ta tasdiqlanmagan buyurtma bor', 'warn', 'Avval ularni tasdiqlang yoki tozalang'); return openSale(dr[dr.length - 1]); }
+  const o = newDraft(type, { bill_no: slot });
+  if (type === 'delivery' && !(await deliveryModal(o, true))) return;
+  openSale(o);
 }
 
 // ====================================================================
@@ -878,10 +1215,6 @@ async function viewOrders(v) {
   $('#ot').onclick = (e) => { const b = e.target.closest('[data-t]'); if (b) { UI.orderType = b.dataset.t; renderView(); } };
   $('#oq').oninput = debounce((e) => { UI.orderQ = e.target.value; renderView(); const i = $('#oq'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250);
   $('#ol').onclick = (e) => { const b = e.target.closest('[data-o]'); if (b) orderDetail(all.find(x => x.uuid === b.dataset.o)); };
-}
-
-function statusBadge(o) {
-  return { draft: '<span class="st">Tasdiqlanmagan</span>', accepted: '<span class="st yellow">Ochiq</span>', done: '<span class="st green">To\'langan</span>', cancelled: '<span class="st red">Bekor</span>' }[o.status] || '';
 }
 
 async function orderDetail(o) {
@@ -921,9 +1254,9 @@ async function orderDetail(o) {
       return r.ok ? (toast('Qayta chiqarish navbatga qo\'yildi'), m.close()) : toast(r.error, 'bad');
     }
     const b = e.target.closest('[data-a]'); if (!b) return;
-    if (b.dataset.a === 'open') { UI.cur = o; UI.sel = null; m.close(); go('sale'); }
+    if (b.dataset.a === 'open') { m.close(); openSale(o); }
     if (b.dataset.a === 'cancel') { m.close(); UI.cur = o; await cancelOrderFlow(o); }
-    if (b.dataset.a === 'kitchen') { await printDoc('kitchen', o, kitchenDoc(o, o.items.filter(i => i.qty > 0), { ...ctx(), isAddition: false }), 'Oshxona cheki (nusxa)'); }
+    if (b.dataset.a === 'kitchen') { await printDoc('kitchen', o, kitchenDoc(kitchenOrder(o), o.items.filter(i => i.qty > 0), { ...ctx(), isAddition: false }), 'Oshxona cheki (nusxa)'); }
     if (b.dataset.a === 'customer') { await printDoc('customer', o, customerDoc(o, ctx()), 'Mijoz cheki (nusxa)'); }
   };
 }
@@ -952,7 +1285,7 @@ async function handlePull(r) {
     toast(`Yangi Telegram buyurtma: ${newCount} ta`, 'info', '', 6000);
   }
   updateTgBadge();
-  if (UI.view === 'telegram') renderView();
+  if ((UI.view === 'telegram' || UI.view === 'list') && !hasModal()) renderView(); else updateCounts();
 }
 
 async function updateTgBadge() {
@@ -1161,7 +1494,7 @@ async function closeShiftFlow() {
   if (dr.length) {
     if (!(await confirmBox('Tasdiqlanmagan buyurtmalar', `${dr.length} ta tasdiqlanmagan buyurtma bor (oshxonaga yuborilmagan). Ular o'chiriladi.`, "O'chirish va davom etish", true))) return;
     for (const d of dr) await db.del('orders', d.uuid);
-    if (UI.cur && UI.cur.status === 'draft') UI.cur = null;
+    UI.cur = null;
   }
   const open = await openOrders();
   if (open.length) {
@@ -1297,7 +1630,7 @@ async function viewReports(v) {
 // ====================================================================
 async function viewSettings(v) {
   const T = { printer: '🖨 Printer', queue: '📄 Printer navbati', sync: '⇅ Sinxronlash', device: '💻 Qurilma' };
-  v.innerHTML = `<div class="page"><div class="page-head"><h1>Sozlamalar</h1>
+  v.innerHTML = `<div class="page"><div class="page-head"><h1>Printer va aloqa</h1>
     <div class="filters" id="stabs">${Object.entries(T).map(([k, l]) => `<button class="fbtn ${UI.settingsTab === k ? 'on' : ''}" data-s="${k}">${l}</button>`).join('')}</div></div><div id="sbody"></div></div>`;
   $('#stabs').onclick = (e) => { const b = e.target.closest('[data-s]'); if (b) { UI.settingsTab = b.dataset.s; renderView(); } };
   const body = $('#sbody');

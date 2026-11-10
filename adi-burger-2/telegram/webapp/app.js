@@ -47,7 +47,7 @@
     view = 'menu'; back(null); stopPoll();
     if (!D.enabled) { app.innerHTML = '<div class="closed"><div style="font-size:48px">⏸</div><h2>Buyurtma vaqtincha qabul qilinmayapti</h2><p>' + esc(D.contact) + '</p></div>'; return; }
     var cats = D.categories;
-    var html = '<div class="wrap"><div class="hero"><div><h1>' + esc(D.brand) + '</h1><div class="sub">' + (D.open ? '🟢 Ochiq · ' : '🔴 Yopiq · ') + esc(D.work) + '</div></div><button class="link" data-go="orders">Buyurtmalarim</button></div>';
+    var html = '<div class="wrap"><div class="hero"><div><img class="hlogo" src="../../pos/icons/logo.png" alt="' + esc(D.brand) + '"><div class="sub">' + (D.open ? '🟢 Ochiq · ' : '🔴 Yopiq · ') + esc(D.work) + '</div></div><button class="link" data-go="orders">Buyurtmalarim</button></div>';
     if (!D.open) html += '<div class="err">Hozir ish vaqti emas. Menyuni ko\'rishingiz mumkin, buyurtma ish vaqtida qabul qilinadi.</div>';
     html += '<div class="cats"><button class="cat ' + (cat === 0 ? 'on' : '') + '" data-cat="0">Hammasi</button>' + cats.map(function (c) { return '<button class="cat ' + (cat === c.id ? 'on' : '') + '" data-cat="' + c.id + '">' + esc(c.icon) + ' ' + esc(c.name) + '</button>'; }).join('') + '</div>';
     cats.forEach(function (c) {

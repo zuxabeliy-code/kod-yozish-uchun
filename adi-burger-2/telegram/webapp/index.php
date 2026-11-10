@@ -16,7 +16,7 @@ $brand = setting('brand_name') ?: 'ADI BURGER';
 <link rel="stylesheet" href="app.css?v=<?= ADI_VERSION ?>">
 </head>
 <body>
-<div id="app"><div class="loading"><div class="spin"></div><div><?= e($brand) ?></div></div></div>
+<div id="app"><div class="loading"><img src="../../pos/icons/logo.png" alt="<?= e($brand) ?>"><div class="spin"></div></div></div>
 <div id="toast"></div>
 <script src="app.js?v=<?= ADI_VERSION ?>"></script>
 </body>

@@ -2,6 +2,7 @@
 // Printer xizmati bu qatorlarni ESC/POS ga aylantiradi (58 yoki 80 mm). Admin panelning jonli ko'rinishi ham shu fayldan foydalanadi.
 
 import { fmt, dt, nowIso } from './util.js';
+import { qrImage } from './qr.js';
 
 const TYPE_LABEL = { table: 'STOL', takeaway: 'OLIB KETISH', phone: 'TELEFON', delivery: 'DOSTAVKA' };
 const PAY_LABEL = { cash: 'Naqd', terminal: 'Terminal (karta)', click: 'Click', card_transfer: "Kartaga o'tkazma", hamyon: 'Hamyon' };
@@ -12,7 +13,8 @@ function typeLine(o, tables) {
   if (o.source === 'telegram') return `TELEGRAM ${o.number} · ${o.type === 'delivery' ? 'DOSTAVKA' : 'OLIB KETISH'}`;
   if (o.type === 'table') {
     const t = (tables || []).find(x => x.id === o.table_id);
-    return `${(t ? t.name : 'STOL').toUpperCase()}${o.bill_no > 1 ? ' (Hisob-' + o.bill_no + ')' : ''}`;
+    const nm = t ? (/^\d+$/.test(String(t.name).trim()) ? 'STOL ' + String(t.name).trim() : String(t.name).toUpperCase()) : 'STOL';
+    return `${t && t.zone ? String(t.zone).toUpperCase() + ' · ' : ''}${nm}${o.bill_no > 1 ? ' (Hisob-' + o.bill_no + ')' : ''}`;
   }
   return TYPE_LABEL[o.type] || o.type;
 }
@@ -86,6 +88,14 @@ export function renderReceipt(which, o, items, ctx) {
           if (p.method === 'cash' && p.received) { push(b, { type: 'lr', l: '  Berildi', r: fmt(p.received) }); change += p.change || 0; }
         }
         if (change > 0) push(b, { type: 'lr', l: 'Qaytim', r: fmt(change) });
+        break;
+      }
+      case 'qr': {
+        // Onlayn chek havolasi (buyurtma UUID si — taxmin qilib bo'lmaydi). Rasm sifatida chiqadi: har qanday ESC/POS printerda ishlaydi.
+        if (which !== 'customer' || !o.uuid || !ctx.base) break;
+        const q = qrImage(ctx.base + 'r/?o=' + o.uuid, b.size === 2 ? 300 : 216);
+        L.push({ type: 'img', w: q.w, h: q.h, b64: q.b64, align: b.align || 'c' });
+        for (const ln of String(b.text || '').split('\n')) if (ln.trim()) push({ ...b, size: 1 }, { t: ln });
         break;
       }
       case 'separator': L.push({ type: 'sep', ch: b.ch || '-' }); break;

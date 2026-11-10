@@ -206,7 +206,7 @@ function sync_catalog(): array
             'id' => (int)$p['id'], 'category_id' => (int)$p['category_id'], 'name' => $p['name'], 'price' => (int)$p['price'],
             'image' => product_thumb($p['image']), 'available' => (int)$p['is_available'] === 1, 'sort' => (int)$p['sort'],
         ], rows('SELECT p.* FROM products p JOIN categories c ON c.id = p.category_id WHERE p.is_active = 1 AND p.in_pos = 1 AND c.is_active = 1 ORDER BY p.sort, p.id')),
-        'tables' => array_map(fn($t) => ['id' => (int)$t['id'], 'name' => $t['name']], rows('SELECT * FROM dining_tables WHERE is_active = 1 ORDER BY sort, id')),
+        'tables' => array_map(fn($t) => ['id' => (int)$t['id'], 'name' => $t['name'], 'zone' => (string)($t['zone'] ?? '')], rows('SELECT * FROM dining_tables WHERE is_active = 1 ORDER BY sort, id')),
         // PIN xeshlari kassaga internet bo'lmaganda ham kirish uchun beriladi (faqat ro'yxatdan o'tgan qurilmaga)
         'employees' => array_map(fn($e) => ['id' => (int)$e['id'], 'name' => $e['name'], 'role' => $e['role'], 'salt' => $e['pin_salt'], 'hash' => $e['pin_hash'],
             'login' => $e['login'], 'lsalt' => $e['pw_salt'], 'lhash' => $e['pw_hash']],

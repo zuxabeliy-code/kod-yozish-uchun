@@ -85,9 +85,9 @@ function handle_action(string $a, array $me): void
             if ($name === '') {
                 throw new UserError('Stol nomini kiriting.');
             }
-            $f = [$name, post_int('sort'), post_int('is_active') ? 1 : 0];
-            $id ? q('UPDATE dining_tables SET name = ?, sort = ?, is_active = ? WHERE id = ?', [...$f, $id])
-                : q('INSERT INTO dining_tables (name, sort, is_active) VALUES (?, ?, ?)', $f);
+            $f = [$name, str_limit(trim(post('zone')), 50), post_int('sort'), post_int('is_active') ? 1 : 0];
+            $id ? q('UPDATE dining_tables SET name = ?, zone = ?, sort = ?, is_active = ? WHERE id = ?', [...$f, $id])
+                : q('INSERT INTO dining_tables (name, zone, sort, is_active) VALUES (?, ?, ?, ?)', $f);
             catalog_bump();
             flash('Stol saqlandi');
             redirect('tables');
@@ -121,9 +121,12 @@ function handle_action(string $a, array $me): void
 
         case 'table.bulk':
             $n = max(1, min(100, post_int('count')));
+            $zone = str_limit(trim(post('zone')), 50);
             $start = (int)val('SELECT COUNT(*) FROM dining_tables') + 1;
+            // Zal ichida stollar 1 dan raqamlanadi (masalan: ICHKI ZAL — 1, 2, 3...)
+            $inZone = (int)val('SELECT COUNT(*) FROM dining_tables WHERE zone = ? AND is_active = 1', [$zone]);
             for ($i = 0; $i < $n; $i++) {
-                q('INSERT INTO dining_tables (name, sort) VALUES (?, ?)', ['Stol ' . ($start + $i), $start + $i]);
+                q('INSERT INTO dining_tables (name, zone, sort) VALUES (?, ?, ?)', [($zone !== '' ? (string)($inZone + $i + 1) : 'Stol ' . ($start + $i)), $zone, $start + $i]);
             }
             catalog_bump();
             flash("$n ta stol qo'shildi");
@@ -396,6 +399,49 @@ function handle_action(string $a, array $me): void
             q("UPDATE error_logs SET fix_status = 'fixed', fixed_at = NOW() WHERE component = ? AND fix_status = 'open'", [$code === 'webhook' ? 'telegram' : $code]);
             flash('Tuzatish: ' . $msg);
             redirect('diagnostics');
+
+        case 'diag.fixall':
+            // Bitta tugma: xavfsiz (alohida tasdiq talab qilmaydigan) barcha tuzatishlar ketma-ket bajariladi
+            $done = [];
+            $skip = [];
+            foreach (diag_run() as $code => $r) {
+                if ($r['status'] === 'ok' || $r['status'] === 'unchecked' || !isset(DIAG_FIXES[$code])) {
+                    continue;
+                }
+                if (DIAG_FIXES[$code]['confirm']) {
+                    $skip[] = DIAG_TITLES[$code];
+                    continue;
+                }
+                try {
+                    diag_fix($code);
+                    $done[] = DIAG_TITLES[$code];
+                } catch (Throwable $e) {
+                    $skip[] = DIAG_TITLES[$code] . ' (' . $e->getMessage() . ')';
+                }
+            }
+            $after = diag_run();
+            $left = count(array_filter($after, static fn($r) => $r['status'] === 'error'));
+            audit('diag.fixall', 'diag', '', ['fixed' => $done, 'skipped' => $skip], $emp);
+            flash(($done ? 'Tuzatildi: ' . implode(', ', $done) . '. ' : 'Avtomatik tuzatiladigan muammo topilmadi. ')
+                . ($skip ? "Qo'lda ko'rish kerak: " . implode(', ', $skip) . '. ' : '') . ($left ? "Qolgan xatolar: $left ta — tavsiyalarga qarang." : 'Hozir xato yo\'q.'), $left ? 'bad' : 'ok');
+            redirect('diagnostics');
+
+        // ---------- Claude (MCP) ----------
+        case 'mcp.toggle':
+            $on = post_int('on') === 1;
+            if ($on && setting('mcp_key_hash') === '') {
+                $_SESSION['mcp_key_once'] = mcp_new_key();
+            }
+            setting_set('mcp_enabled', $on ? '1' : '0');
+            audit('mcp.toggle', 'settings', '', ['on' => $on], $emp);
+            flash($on ? 'MCP yoqildi.' : 'MCP o\'chirildi. Endi tashqaridan ulanib bo\'lmaydi.');
+            redirect('mcp');
+
+        case 'mcp.newkey':
+            $_SESSION['mcp_key_once'] = mcp_new_key();
+            audit('mcp.newkey', 'settings', '', [], $emp);
+            flash('Yangi kalit yaratildi. Eski kalit endi ishlamaydi.');
+            redirect('mcp');
 
         case 'error.resolve':
             q("UPDATE error_logs SET fix_status = ?, fixed_at = NOW() WHERE id = ?", [post('to') === 'ignored' ? 'ignored' : 'fixed', post_int('id')]);

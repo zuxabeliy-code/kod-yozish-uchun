@@ -7,3 +7,4 @@ uploads/receipts/*
 uploads/logo/*
 !**/.htaccess
 !**/.gitkeep
+storage/mcp/*

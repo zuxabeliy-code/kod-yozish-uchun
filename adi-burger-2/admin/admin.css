@@ -170,3 +170,17 @@ input[type=range] { width: 100%; height: 30px; padding: 0; accent-color: var(--b
 .pl.img canvas { image-rendering: pixelated; display: inline-block; }
 .cut { color: #888; text-align: center; margin-top: 10px; font-size: 11px; }
 .filters .btn.on { border-color: var(--brand); background: rgba(245,165,36,.15); }
+
+/* QR menyu kartalari */
+.qr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.qr-card { background: #fff; color: #111; border-radius: 16px; padding: 16px 14px 14px; display: grid; justify-items: center; gap: 8px; text-align: center; border: 2px solid #f56a00; break-inside: avoid; }
+.qr-card img { height: 46px; }
+.qr-card svg { width: 100%; max-width: 190px; height: auto; }
+.qr-card b { font-size: 20px; }
+.qr-card span { font-size: 12.5px; color: #555; }
+input.mono { font-family: Consolas, monospace; font-size: 13px; padding: 10px; border-radius: 8px; }
+@media print {
+  .noprint, .side, .top, .drawer, .flash, #burger, header, nav { display: none !important; }
+  body, .main, .content, .wrap { background: #fff !important; padding: 0 !important; margin: 0 !important; }
+  .qr-grid { grid-template-columns: repeat(3, 1fr); gap: 8mm; }
+}

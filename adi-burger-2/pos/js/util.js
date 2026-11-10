@@ -39,11 +39,11 @@ export function toast(msg, type = 'ok', sub = '', ms = 3200) {
 
 // ---------- Modal oynalar ----------
 let modalStack = [];
-export function modal({ title, body, foot = '', cls = '', onClose = null, closable = true }) {
+export function modal({ title = '', body, foot = '', cls = '', onClose = null, closable = true, bare = false, ovCls = '' }) {
   const root = document.getElementById('modal-root');
   const ov = document.createElement('div');
-  ov.className = 'overlay';
-  ov.innerHTML = `<div class="modal ${cls}" role="dialog"><div class="modal-h"><h2>${h(title)}</h2>${closable ? '<button class="modal-x" data-x>✕</button>' : ''}</div>
+  ov.className = 'overlay ' + ovCls;
+  ov.innerHTML = `<div class="modal ${cls}" role="dialog">${bare ? '' : `<div class="modal-h"><h2>${h(title)}</h2>${closable ? '<button class="modal-x" data-x>✕</button>' : ''}</div>`}
     <div class="modal-b"></div>${foot !== null ? '<div class="modal-f"></div>' : ''}</div>`;
   const b = ov.querySelector('.modal-b');
   if (typeof body === 'string') b.innerHTML = body; else if (body) b.append(body);
@@ -52,7 +52,7 @@ export function modal({ title, body, foot = '', cls = '', onClose = null, closab
   const close = () => { ov.remove(); modalStack = modalStack.filter(x => x !== api); onClose && onClose(); };
   const api = { el: ov, body: b, foot: f, close };
   if (closable) {
-    ov.querySelector('[data-x]').onclick = close;
+    const x = ov.querySelector('[data-x]'); if (x) x.onclick = close;
     ov.addEventListener('pointerdown', e => { if (e.target === ov) close(); });
   }
   root.append(ov);
@@ -75,17 +75,18 @@ export function confirmBox(title, text, okLabel = 'Ha', danger = false) {
   });
 }
 
-export function promptBox(title, label, { value = '', placeholder = '', textarea = false, required = true, presets = [] } = {}) {
+export function promptBox(title, label, { value = '', placeholder = '', textarea = false, required = true, presets = [], numeric = false } = {}) {
   return new Promise(res => {
     let done = false;
     const presetHtml = presets.length ? `<div class="filters" style="margin-bottom:10px">${presets.map(p => `<button class="fbtn" data-p="${h(p)}">${h(p)}</button>`).join('')}</div>` : '';
     const m = modal({
       title,
-      body: `${presetHtml}<div class="field"><label>${h(label)}</label>${textarea ? `<textarea class="inp" maxlength="250" placeholder="${h(placeholder)}">${h(value)}</textarea>` : `<input class="inp" maxlength="250" value="${h(value)}" placeholder="${h(placeholder)}">`}</div>`,
+      body: `${presetHtml}<div class="field"><label>${h(label)}</label>${textarea ? `<textarea class="inp" maxlength="250" placeholder="${h(placeholder)}">${h(value)}</textarea>` : `<input class="inp" maxlength="250" ${numeric ? 'inputmode="numeric"' : ''} value="${h(value)}" placeholder="${h(placeholder)}">`}</div>`,
       foot: `<button class="btn-x ghost" data-no>Bekor</button><button class="btn-x confirm" data-ok>Saqlash</button>`,
       onClose: () => { if (!done) res(null); },
     });
     const inp = m.body.querySelector('.inp');
+    if (numeric) setTimeout(() => inp.select(), 40);
     m.body.querySelectorAll('[data-p]').forEach(b => b.onclick = () => { inp.value = b.dataset.p; inp.focus(); });
     const ok = () => {
       const v = inp.value.trim();

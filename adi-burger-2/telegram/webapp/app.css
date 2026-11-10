@@ -3,8 +3,8 @@
   --bg2: var(--tg-theme-secondary-bg-color, #111a2e);
   --text: var(--tg-theme-text-color, #eef2fb);
   --hint: var(--tg-theme-hint-color, #8d9bb8);
-  --btn: #f5a524;
-  --btn-text: #1b1200;
+  --btn: #ff6a00;
+  --btn-text: #ffffff;
   --line: rgba(128, 140, 170, .2);
   --green: #22c55e;
   --red: #ef4444;
@@ -77,3 +77,17 @@ textarea.inp { height: 76px; padding: 10px 12px; resize: none; }
 #toast div { background: #111a2e; color: #fff; padding: 10px 16px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.4); font-weight: 600; }
 .note { background: var(--bg); border: 1px dashed var(--btn); border-radius: 12px; padding: 10px 12px; margin: 10px 0; font-size: 13.5px; line-height: 1.45; }
 .closed { text-align: center; padding: 40px 16px; color: var(--hint); }
+
+/* Brend: logo va yumshoq animatsiyalar */
+.loading img { width: min(60vw, 240px); animation: lg 1.1s ease-in-out infinite alternate; }
+@keyframes lg { from { transform: scale(.96); opacity: .8; } to { transform: scale(1.03); opacity: 1; } }
+.hero { background: linear-gradient(135deg, rgba(255, 106, 0, .16), rgba(255, 106, 0, .03)); border: 1px solid rgba(255, 106, 0, .25); border-radius: 18px; padding: 12px 14px; }
+.hero .hlogo { height: 44px; display: block; }
+.card { animation: cardIn .45s cubic-bezier(.2, .8, .3, 1) both; transition: transform .15s; }
+.card:active { transform: scale(.97); }
+.grid .card:nth-child(2) { animation-delay: .05s; } .grid .card:nth-child(3) { animation-delay: .1s; } .grid .card:nth-child(4) { animation-delay: .15s; } .grid .card:nth-child(n+5) { animation-delay: .2s; }
+@keyframes cardIn { from { opacity: 0; transform: translateY(16px) scale(.97); } }
+.cat { transition: background .2s, color .2s, transform .2s; }
+.cat.on { box-shadow: 0 6px 16px rgba(255, 106, 0, .35); transform: translateY(-1px); }
+.add { box-shadow: 0 4px 12px rgba(255, 106, 0, .35); }
+.add:active { transform: scale(.9); }

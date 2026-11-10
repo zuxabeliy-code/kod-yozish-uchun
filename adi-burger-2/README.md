@@ -21,6 +21,9 @@ PHP 8.0+ (8.2 tavsiya) + MySQL, oddiy shared hosting (myxvest.ru) uchun moslanga
 | `api/` | Kassa API: qurilma tokeni, sinxronlash, katalog |
 | `telegram/` | `webhook.php` (bot) va `webapp/` (mijoz menyusi) |
 | `pay/hamyon.php` | Hamyon callback |
+| `menu/` | QR menyu sayti (stoldagi QR-kod ochadi, faqat menyu) |
+| `r/` | Onlayn chek (mijoz chekidagi QR-kod ochadi) |
+| `mcp/` | Claude (MCP) ulanishi. Standart o'chiq; admin panel → Claude (MCP) |
 | `app/` | Server mantig'i. Internetdan yopiq |
 | `database/` | `schema.sql` (22 jadval) va boshlang'ich menyu. Yopiq |
 | `config/` | `config.php` — o'rnatuvchi yaratadi. Yopiq |
