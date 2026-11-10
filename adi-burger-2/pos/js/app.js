@@ -10,7 +10,7 @@ import {
 } from './model.js';
 import { uuid, fmt, som, h, dt, pad2, nowIso, localDate, toast, modal, confirmBox, promptBox, closeAllModals, hasModal, beep, alarmStart, alarmStop, pbkdf2Hex, debounce, audio, $, $$ } from './util.js';
 
-const VERSION = '2.2.0';
+const VERSION = '2.2.1';
 const app = document.getElementById('app');
 const UI = { view: 'tables', mode: 'table', zone: 'all', billMap: {}, showSearch: false, orderQ: '', orderType: 'all', cur: null, sel: null, cat: null, q: '', orderFilter: 'open', settingsTab: 'printer', reportPeriod: 'today' };
 const TYPE_NAMES = { takeaway: 'Olib ketish', table: 'Stolda', phone: 'Telefon', delivery: 'Yetkazish' };
@@ -38,7 +38,7 @@ async function boot() {
     loadCatalog(); // fonda yangilanadi
   }
   S.shift = await kv.get('shift');
-  configureSync({ status: collectStatus, onPull: handlePull, onAuthFail: (e) => { banner('Qurilma serverdan uzilgan: ' + e, 'red'); } });
+  configureSync({ status: collectStatus, onPull: handlePull, onAuthFail: (e) => deviceLost(e) });
   kick(200);
   agent.onAgentChange(renderStatus);
   agent.onPrint(onPrintChange);
@@ -71,6 +71,17 @@ async function loadCatalog() {
 // ====================================================================
 // Qurilmani ulash (bir marta)
 // ====================================================================
+/** Server bu kassani tanimasa (baza yangilangan, qurilma o'chirilgan): kassa o'zi qayta ulash oynasini ochadi. Lokal ma'lumot saqlanadi. */
+function deviceLost(e) {
+  const msg = "Server bu kassani tanimayapti (baza yangilangan yoki qurilma o'chirilgan). Administrator logini bilan qayta ulang. Savdo ma'lumotlari saqlanadi.";
+  if (!S.employee) return renderSetup(msg);
+  if ($('#banner')) return;
+  banner('Server kassani tanimayapti.', 'red');
+  const b = $('#banner'); if (!b) return;
+  const r = document.createElement('button'); r.textContent = 'Qayta ulash'; r.onclick = () => { b.remove(); closeAllModals(); S.employee = null; renderSetup(msg); };
+  b.insertBefore(r, b.lastChild);
+}
+
 function renderSetup(err = '') {
   app.innerHTML = `<div class="lock"><div class="lock-card box" style="width:420px;text-align:left">
     <div style="display:flex;gap:10px;align-items:center"><div class="logo-mark">AB</div><div><h1 style="margin:0;font-size:20px">Kassani ulash</h1><div class="muted" style="font-size:13px">Bir marta, administrator logini bilan</div></div></div>
@@ -87,6 +98,7 @@ function renderSetup(err = '') {
     const r = await api('device.register', { method: 'POST', auth: false, body: { username: $('#su-user').value, password: $('#su-pass').value, name: $('#su-name').value } });
     if (!r.ok) { renderSetup(r.error || 'Xato'); return; }
     await kv.set('device_token', r.token);
+    await kv.set('pin_lock', { fails: 0, until: 0 });
     const c = await loadCatalog();
     if (!c) { renderSetup("Ulandi, lekin menyu yuklanmadi. Qayta urinib ko'ring."); return; }
     toast('Kassa serverga ulandi');
