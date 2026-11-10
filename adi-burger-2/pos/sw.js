@@ -1,7 +1,7 @@
 // ADI BURGER POS Service Worker: kassa interfeysi internet bo'lmasa ham ochiladi.
-const VERSION = 'adi-pos-2.2.1';
+const VERSION = 'adi-pos-2.2.2';
 const SHELL = [
-  './', './index.html', './manifest.json', './css/pos.css?v=2.2.1', './js/app.js?v=2.2.1',
+  './', './index.html', './manifest.json', './css/pos.css?v=2.2.2', './js/app.js?v=2.2.2',
   './js/db.js', './js/util.js', './js/sync.js', './js/agent.js', './js/model.js', './js/receipt.js', './js/qr.js',
   './icons/icon-192.png', './icons/favicon.png', './icons/logo.png',
 ];

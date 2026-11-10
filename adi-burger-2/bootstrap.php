@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 
 define('ADI', true);
-define('ADI_VERSION', '2.2.1');
+define('ADI_VERSION', '2.2.2');
 define('ROOT', __DIR__);
 
 mb_internal_encoding('UTF-8');

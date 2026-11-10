@@ -10,7 +10,7 @@ import {
 } from './model.js';
 import { uuid, fmt, som, h, dt, pad2, nowIso, localDate, toast, modal, confirmBox, promptBox, closeAllModals, hasModal, beep, alarmStart, alarmStop, pbkdf2Hex, debounce, audio, $, $$ } from './util.js';
 
-const VERSION = '2.2.1';
+const VERSION = '2.2.2';
 const app = document.getElementById('app');
 const UI = { view: 'tables', mode: 'table', zone: 'all', billMap: {}, showSearch: false, orderQ: '', orderType: 'all', cur: null, sel: null, cat: null, q: '', orderFilter: 'open', settingsTab: 'printer', reportPeriod: 'today' };
 const TYPE_NAMES = { takeaway: 'Olib ketish', table: 'Stolda', phone: 'Telefon', delivery: 'Yetkazish' };
@@ -1186,14 +1186,13 @@ async function viewList(v) {
   };
 }
 
-/** "+ yangi buyurtma": bo'sh Hisob (1..4) ochiladi. Yetkazishda avval telefon/manzil oynasi chiqadi. */
+/** "+ yangi buyurtma": bo'sh Hisob (1..4) ochiladi. Hech narsa so'ralmaydi. */
 async function newInMode(type, dr) {
   const used = dr.map(d => d.bill_no || 1);
   const slot = [1, 2, 3, 4].find(n => !used.includes(n));
   if (!slot) { toast('4 ta tasdiqlanmagan buyurtma bor', 'warn', 'Avval ularni tasdiqlang yoki tozalang'); return openSale(dr[dr.length - 1]); }
   const o = newDraft(type, { bill_no: slot });
-  if (type === 'delivery' && !(await deliveryModal(o, true))) return;
-  openSale(o);
+  openSale(o); // telefon va manzil so'ralmaydi: kerak bo'lsa buyurtma panelidagi tugma orqali kiritiladi
 }
 
 // ====================================================================
