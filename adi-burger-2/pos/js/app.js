@@ -10,7 +10,7 @@ import {
 } from './model.js';
 import { uuid, fmt, som, h, dt, pad2, nowIso, localDate, toast, modal, confirmBox, promptBox, closeAllModals, hasModal, beep, alarmStart, alarmStop, pbkdf2Hex, debounce, audio, $, $$ } from './util.js';
 
-const VERSION = '2.2.2';
+const VERSION = '2.2.3';
 const app = document.getElementById('app');
 const UI = { view: 'tables', mode: 'table', zone: 'all', billMap: {}, showSearch: false, orderQ: '', orderType: 'all', cur: null, sel: null, cat: null, q: '', orderFilter: 'open', settingsTab: 'printer', reportPeriod: 'today' };
 const TYPE_NAMES = { takeaway: 'Olib ketish', table: 'Stolda', phone: 'Telefon', delivery: 'Yetkazish' };
@@ -784,11 +784,12 @@ function fmtPhone(v) {
   return ('+998 ' + [d.slice(0, 2), d.slice(2, 5), d.slice(5, 7), d.slice(7, 9)].filter(Boolean).join(' ')).trimEnd() + (d.length ? '' : ' ');
 }
 /** Shu telefon raqami bilan avval berilgan buyurtmalardagi manzillar (kassa va Telegram). */
+const ts = (v) => new Date(String(v || '').replace(' ', 'T')).getTime() || 0;
 async function addressBook(phone) {
   const k = phoneKey(phone);
   if (!k) return { addrs: [], name: '' };
   const all = [...await db.all('orders'), ...await db.all('tg')].filter(x => phoneKey(x.phone) === k)
-    .sort((a, b) => String(b.created_at).replace(' ', 'T').localeCompare(String(a.created_at).replace(' ', 'T')));
+    .sort((a, b) => ts(b.created_at) - ts(a.created_at)); // kassa (UTC) va Telegram (mahalliy) vaqti bir xil o'lchamga keltiriladi
   return { addrs: [...new Set(all.map(x => String(x.address || '').trim()).filter(Boolean))].slice(0, 4), name: all.find(x => x.customer_name)?.customer_name || '' };
 }
 
@@ -993,7 +994,7 @@ function payModal(o, { onDone = null, total: forcedTotal = null, title = null } 
         <div class="pay-grid"><div class="pay-left">
             <div class="prow ord"><span class="pi">${IC.cart}</span><div class="pn">${h(title || 'Buyurtma ' + (o.number ? '#' + o.number : '(yangi)'))}</div><span></span></div>
             ${methods.map(k => `<div class="prow" data-m="${k}"><span class="pi">${IC.cash}</span><div><div class="pn">${PAY_NAME[k]}</div><div class="pv num" data-v="${k}">0 UZS</div></div><button class="plus" data-plus="${k}" title="Qolgan summani shu turga yozish">+</button></div>`).join('')}
-            <div class="pay-hint">«+» — qolgan summani shu to'lov turiga yozadi. Boshqa summa (masalan, mijoz bergan naqd yoki aralash to'lov) uchun turni bosib, raqamlarni tering.</div>
+            <div class="pay-hint">To'lov turini bossangiz, qolgan summa o'zi yoziladi — keyin «To'lash» ni bosing. Boshqa summa (mijoz bergan naqd yoki aralash to'lov) uchun raqamlarni tering.</div>
           </div>
           <div class="keypad" id="kp">${[7, 8, 9, 4, 5, 6, 1, 2, 3, 0, '000', 'AC'].map(k => `<button data-k="${k}">${k}</button>`).join('')}</div></div>`,
       foot: null,
@@ -1045,7 +1046,14 @@ function payModal(o, { onDone = null, total: forcedTotal = null, title = null } 
       const pl = e.target.closest('[data-plus]');
       if (pl) { active = pl.dataset.plus; amt[active] = Math.max(0, total - (sum() - amt[active])); fresh = true; return draw(); }
       const row = e.target.closest('.prow[data-m]');
-      if (row) { active = row.dataset.m; fresh = true; return draw(); }
+      if (row) {
+        active = row.dataset.m;
+        const rem = total - (sum() - amt[active]);
+        // Hammasi allaqachon boshqa turga yozilgan bo'lsa — summa shu turga ko'chadi; aks holda qolgan summa yoziladi (aralash to'lov uchun)
+        if (rem <= 0 && amt[active] === 0) { methods.forEach(k => { amt[k] = 0; }); amt[active] = total; }
+        else amt[active] = Math.max(0, rem);
+        fresh = true; return draw();
+      }
       const k = e.target.closest('[data-k]');
       if (k) key(k.dataset.k);
     };
