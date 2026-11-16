@@ -1,0 +1,11 @@
+.env
+*.session
+*.session-journal
+data/*
+!data/.gitkeep
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.zip

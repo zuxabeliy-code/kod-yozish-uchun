@@ -1,0 +1,23 @@
+# /etc/systemd/system/jarvis.service
+# YO'LLAR VA FOYDALANUVCHINI O'ZGARTIRING: /opt/jarvis-bot va User=jarvis
+[Unit]
+Description=Jarvis Telegram userbot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jarvis
+WorkingDirectory=/opt/jarvis-bot
+ExecStart=/opt/jarvis-bot/.venv/bin/python main.py
+Restart=always
+RestartSec=10
+# xavfsizlik
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/jarvis-bot/data
+
+[Install]
+WantedBy=multi-user.target
