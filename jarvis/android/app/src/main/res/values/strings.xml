@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">JARVIS</string>
     <string name="title">J.A.R.V.I.S</string>
-    <string name="hint_input">Yozing yoki mikrofonni bosing…</string>
+    <string name="hint_input">Yozing yoki gapiring…</string>
     <string name="cd_mic">Mikrofon</string>
     <string name="cd_send">Yuborish</string>
     <string name="cd_settings">Sozlamalar</string>
