@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Jarvis" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:colorPrimary">@color/jv_bg</item>
+        <item name="android:colorPrimaryDark">@color/jv_bg</item>
+        <item name="android:colorAccent">@color/jv_cyan</item>
+        <item name="android:colorControlActivated">@color/jv_cyan</item>
+        <item name="android:colorControlNormal">@color/jv_muted</item>
+        <item name="android:windowBackground">@color/jv_bg</item>
+        <item name="android:statusBarColor">@color/jv_bg</item>
+        <item name="android:navigationBarColor">@color/jv_bg</item>
+        <item name="android:textColor">@color/jv_text</item>
+        <item name="android:textColorHint">@color/jv_muted</item>
+    </style>
+
+    <style name="Jarvis" />
+
+    <style name="Jarvis.Label">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/jv_muted</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:layout_marginTop">14dp</item>
+        <item name="android:layout_marginBottom">6dp</item>
+    </style>
+
+    <style name="Jarvis.Section">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/jv_cyan</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:letterSpacing">0.15</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:layout_marginTop">22dp</item>
+    </style>
+
+    <style name="Jarvis.Input">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/bg_input</item>
+        <item name="android:padding">12dp</item>
+        <item name="android:textColor">@color/jv_text</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:singleLine">true</item>
+    </style>
+
+    <style name="Jarvis.Button">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:background">@drawable/bg_button</item>
+        <item name="android:textColor">@color/jv_cyan</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:letterSpacing">0.1</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:layout_marginTop">10dp</item>
+        <item name="android:stateListAnimator">@null</item>
+    </style>
+
+    <style name="Jarvis.Radio">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/jv_text</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:buttonTint">@color/jv_cyan</item>
+        <item name="android:paddingVertical">6dp</item>
+    </style>
+</resources>

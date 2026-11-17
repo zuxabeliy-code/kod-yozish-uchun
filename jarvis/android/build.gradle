@@ -1,0 +1,22 @@
+// JARVIS — root build fayli.
+// Gradle 6.1.1 + Android Gradle Plugin 4.0.1 (AndroidIDE'dagi ishlagan test loyihangizga mos juftlik).
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:4.0.1'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}

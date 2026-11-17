@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">JARVIS</string>
+    <string name="title">J.A.R.V.I.S</string>
+    <string name="hint_input">Yozing yoki mikrofonni bosing…</string>
+    <string name="cd_mic">Mikrofon</string>
+    <string name="cd_send">Yuborish</string>
+    <string name="cd_settings">Sozlamalar</string>
+    <string name="state_idle">Tayyor. Mikrofonni bosing</string>
+    <string name="state_listening">Eshityapman…</string>
+    <string name="state_thinking">O\'ylayapman…</string>
+    <string name="state_speaking">Gapiryapman…</string>
+    <string name="settings_title">SOZLAMALAR</string>
+    <string name="server_url">Server manzili (https://…)</string>
+    <string name="server_url_hint">https://saytingiz.uz/jarvis</string>
+    <string name="device_token">Qurilma tokeni (admin paneldan)</string>
+    <string name="device_token_hint">64 belgili token</string>
+    <string name="stt_title">Nutqni tanish (STT)</string>
+    <string name="stt_auto">Avto: Android, ishlamasa server (Gemini)</string>
+    <string name="stt_android">Faqat Android (Google)</string>
+    <string name="stt_server">Faqat server (Gemini) — o\'zbekcha uchun ishonchliroq</string>
+    <string name="tts_title">Ovozli javob (TTS)</string>
+    <string name="tts_auto">Avto: Android o\'zbekchani bilsa Android, aks holda server</string>
+    <string name="tts_android">Faqat Android TTS</string>
+    <string name="tts_server">Faqat server (Gemini TTS)</string>
+    <string name="tts_rate">Android TTS tezligi</string>
+    <string name="btn_save">SAQLASH</string>
+    <string name="btn_test">ULANISHNI TEKSHIRISH</string>
+    <string name="btn_root">ROOT HOLATINI TEKSHIRISH</string>
+    <string name="btn_tts_settings">ANDROID TTS SOZLAMALARI</string>
+    <string name="diag_title">Diagnostika</string>
+</resources>

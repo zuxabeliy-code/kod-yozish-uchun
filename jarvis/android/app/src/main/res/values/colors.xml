@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="jv_bg">#FF02050A</color>
+    <color name="jv_bg_panel">#E6061019</color>
+    <color name="jv_line">#FF0F2A3F</color>
+    <color name="jv_cyan">#FF00E5FF</color>
+    <color name="jv_cyan_dim">#6600E5FF</color>
+    <color name="jv_blue">#FF2979FF</color>
+    <color name="jv_text">#FFD8F6FF</color>
+    <color name="jv_muted">#FF6F8FA3</color>
+    <color name="jv_ok">#FF00E676</color>
+    <color name="jv_error">#FFFF3D57</color>
+    <color name="jv_bubble_user">#FF0A2236</color>
+    <color name="jv_bubble_ai">#FF050E18</color>
+</resources>

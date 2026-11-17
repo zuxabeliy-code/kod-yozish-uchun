@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- tashqi halqa (bo'laklarga bo'lingan) -->
+    <path android:strokeColor="#FF00E5FF" android:strokeWidth="2.5" android:fillColor="#00000000"
+        android:strokeLineCap="round"
+        android:pathData="M54,30 A24,24 0 0,1 78,54 M54,78 A24,24 0 0,1 30,54" />
+    <path android:strokeColor="#FF2979FF" android:strokeWidth="2.5" android:fillColor="#00000000"
+        android:strokeLineCap="round"
+        android:pathData="M78,54 A24,24 0 0,1 66,74.8 M30,54 A24,24 0 0,1 42,33.2" />
+    <!-- ichki halqa -->
+    <path android:strokeColor="#9900E5FF" android:strokeWidth="1.5" android:fillColor="#00000000"
+        android:pathData="M54,40 A14,14 0 1,1 53.99,40 Z" />
+    <!-- yadro -->
+    <path android:fillColor="#FF00E5FF" android:pathData="M54,47 A7,7 0 1,1 53.99,47 Z" />
+    <path android:fillColor="#FFE0FBFF" android:pathData="M54,50.5 A3.5,3.5 0 1,1 53.99,50.5 Z" />
+</vector>

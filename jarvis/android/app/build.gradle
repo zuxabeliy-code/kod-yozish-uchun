@@ -1,0 +1,38 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 30
+    buildToolsVersion "30.0.3"
+
+    defaultConfig {
+        applicationId "com.jarvis.ai"
+        minSdkVersion 26
+        // 30: Android 12 da to'liq ishlaydi; Android 12 ning qo'shimcha cheklovlari
+        // (BLUETOOTH_CONNECT va h.k.) keyingi bosqichlarda alohida hisobga olinadi.
+        targetSdkVersion 30
+        versionCode 1
+        versionName "1.0.0-mvp"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lintOptions {
+        abortOnError false
+    }
+}
+
+dependencies {
+    // Ilova faqat Android SDK'ning o'zidan foydalanadi: tashqi kutubxona yo'q.
+    // Bu AndroidIDE'da offline/sekin internetda ham yig'ishni osonlashtiradi.
+    testImplementation 'junit:junit:4.13.2'
+}
